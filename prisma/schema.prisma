@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ──
+
+enum UserRole {
+  admin
+  agent
+  technician
+}
+
+enum CustomerStatus {
+  active
+  suspended
+  cancelled
+}
+
+enum PaymentMethod {
+  cash
+  bkash
+  nagad
+  bank
+}
+
+enum TransactionType {
+  monthly_bill
+  new_connection
+  hardware_fee
+}
+
+enum TransactionStatus {
+  completed
+  pending
+  failed
+}
+
+enum DeviceType {
+  core_router
+  olt
+  splitter
+  onu
+}
+
+enum ItemCategory {
+  onu
+  router
+  fiber_roll
+  switch
+}
+
+enum ItemStatus {
+  in_stock
+  deployed
+  damaged
+}
+
+enum TicketCategory {
+  fiber_cut
+  slow_speed
+  router_issue
+  billing
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  resolved
+}
+
+enum ExpenseCategory {
+  bandwidth
+  salary
+  rent
+  fuel
+  hardware
+  other
+}
+
+// ── Models ──
+
+// 1. 'zones' Table (Geographical Areas)
+model Zone {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  
+  users       User[]
+  customers   Customer[]
+  devices     NetworkDevice[]
+
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@map("zones")
+}
+
+// 2. 'users' Table (System Staff & Agents)
+model User {
+  id                    String        @id @default(uuid()) @db.Uuid
+  fullName              String        @map("full_name")
+  role                  UserRole
+  phone                 String        @unique
+  zoneId                String?       @map("zone_id") @db.Uuid
+  zone                  Zone?         @relation(fields: [zoneId], references: [id])
+  walletBalance         Decimal       @default(0) @db.Decimal(10, 2) @map("wallet_balance") // For agents
+  isActive              Boolean       @default(true) @map("is_active")
+
+  // Relationships
+  customersAsAgent      Customer[]    @relation("AgentCustomers")
+  collectedTransactions Transaction[] @relation("AgentTransactions")
+  assignedInventory     Inventory[]   @relation("TechnicianInventory")
+  assignedTickets       Ticket[]      @relation("TechnicianTickets")
+  recordedExpenses      Expense[]     @relation("ExpenseRecorder")
+
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// 3. 'packages' Table (Internet Plans)
+model Package {
+  id              String     @id @default(uuid()) @db.Uuid
+  name            String
+  price           Decimal    @db.Decimal(10, 2)
+  mikrotikProfile String     @map("mikrotik_profile")
+  downloadSpeed   Int        @map("download_speed") // Mbps
+  uploadSpeed     Int        @map("upload_speed")   // Mbps
+
+  customers       Customer[]
+
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@map("packages")
+}
+
+// 4. 'customers' Table (The End Users)
+model Customer {
+  id               String        @id @default(uuid()) @db.Uuid
+  fullName         String        @map("full_name")
+  phone            String
+  address          String
+  pppoeUsername    String        @unique @map("pppoe_username")
+  pppoePassword    String        @map("pppoe_password")
+  ipAddress        String?       @map("ip_address")
+  macAddress       String?       @map("mac_address")
+  status           CustomerStatus
+  expiryDate       DateTime      @map("expiry_date")
+
+  packageId        String        @map("package_id") @db.Uuid
+  package          Package       @relation(fields: [packageId], references: [id])
+
+  zoneId           String        @map("zone_id") @db.Uuid
+  zone             Zone          @relation(fields: [zoneId], references: [id])
+
+  agentId          String?       @map("agent_id") @db.Uuid
+  agent            User?         @relation("AgentCustomers", fields: [agentId], references: [id])
+
+  transactions     Transaction[]
+  deployedHardware Inventory[]   @relation("CustomerHardware")
+  tickets          Ticket[]
+
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  @@map("customers")
+}
+
+// 5. 'transactions' Table (Billing Ledger)
+model Transaction {
+  id              String            @id @default(uuid()) @db.Uuid
+  customerId      String            @map("customer_id") @db.Uuid
+  customer        Customer          @relation(fields: [customerId], references: [id])
+
+  agentId         String?           @map("agent_id") @db.Uuid
+  agent           User?             @relation("AgentTransactions", fields: [agentId], references: [id])
+
+  amount          Decimal           @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod     @map("payment_method")
+  transactionType TransactionType   @map("transaction_type")
+  referenceId     String?           @map("reference_id")
+  status          TransactionStatus
+
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  @@map("transactions")
+}
+
+// 6. 'network_devices' Table (Topology Tracker)
+model NetworkDevice {
+  id             String          @id @default(uuid()) @db.Uuid
+  type           DeviceType
+  nameOrModel    String          @map("name_or_model")
+  
+  parentDeviceId String?         @map("parent_device_id") @db.Uuid
+  parentDevice   NetworkDevice?  @relation("ParentChild", fields: [parentDeviceId], references: [id])
+  childNodes     NetworkDevice[] @relation("ParentChild")
+
+  zoneId         String?         @map("zone_id") @db.Uuid
+  zone           Zone?           @relation(fields: [zoneId], references: [id])
+
+  ipAddress      String?         @map("ip_address")
+  totalPorts     Int?            @map("total_ports")
+
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("network_devices")
+}
+
+// 7. 'inventory' Table (Hardware Stock)
+model Inventory {
+  id                   String       @id @default(uuid()) @db.Uuid
+  itemCategory         ItemCategory @map("item_category")
+  serialNumber         String?      @unique @map("serial_number")
+  status               ItemStatus
+
+  assignedTechnicianId String?      @map("assigned_technician_id") @db.Uuid
+  assignedTechnician   User?        @relation("TechnicianInventory", fields: [assignedTechnicianId], references: [id])
+
+  deployedCustomerId   String?      @map("deployed_customer_id") @db.Uuid
+  deployedCustomer     Customer?    @relation("CustomerHardware", fields: [deployedCustomerId], references: [id])
+
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+
+  @@map("inventory")
+}
+
+// 8. 'tickets' Table (Helpdesk)
+model Ticket {
+  id                   String         @id @default(uuid()) @db.Uuid
+  customerId           String         @map("customer_id") @db.Uuid
+  customer             Customer       @relation(fields: [customerId], references: [id])
+
+  category             TicketCategory
+  priority             TicketPriority
+  status               TicketStatus
+  
+  assignedTechnicianId String?        @map("assigned_technician_id") @db.Uuid
+  assignedTechnician   User?          @relation("TechnicianTickets", fields: [assignedTechnicianId], references: [id])
+
+  description          String         @db.Text
+
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  @@map("tickets")
+}
+
+// 9. 'expenses' Table (Accounting)
+model Expense {
+  id           String          @id @default(uuid()) @db.Uuid
+  category     ExpenseCategory
+  amount       Decimal         @db.Decimal(10, 2)
+  expenseDate  DateTime        @map("expense_date")
+  description  String
+
+  recordedById String          @map("recorded_by") @db.Uuid
+  recordedBy   User            @relation("ExpenseRecorder", fields: [recordedById], references: [id])
+
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@map("expenses")
+}
