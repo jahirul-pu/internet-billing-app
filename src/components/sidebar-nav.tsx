@@ -64,26 +64,36 @@ const navGroups = [
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
 
+  const DashboardIcon = LayoutDashboard
+  const isDashboardActive = pathname === "/"
+
   return (
-    <nav className="flex flex-col gap-6 p-4">
+    <nav className="flex flex-col gap-8 py-6">
       {/* Dashboard Item */}
-      <Link
-        href="/"
-        onClick={onNavigate}
-        className={cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-          pathname === "/" 
-            ? "bg-indigo-600 text-white" 
-            : "text-slate-400 hover:bg-slate-800 hover:text-white"
-        )}
-      >
-        <LayoutDashboard className="h-4 w-4" />
-        Dashboard
-      </Link>
+      <div className="flex flex-col gap-0.5">
+        <Link
+          href="/"
+          onClick={onNavigate}
+          className={cn(
+            "group flex items-center gap-3 px-5 py-2 text-sm font-medium transition-all relative border-l-[3px]",
+            isDashboardActive 
+              ? "border-indigo-500 bg-indigo-500/10 text-white" 
+              : "border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
+          )}
+        >
+          <DashboardIcon className={cn(
+            "h-4 w-4 transition-all duration-300",
+            isDashboardActive 
+              ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
+              : "text-slate-500 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
+          )} />
+          Dashboard
+        </Link>
+      </div>
 
       {navGroups.map((group) => (
-        <div key={group.title} className="flex flex-col gap-1">
-          <h3 className="px-3 text-[10px] font-bold tracking-widest text-slate-500 uppercase mb-1">
+        <div key={group.title} className="flex flex-col gap-0.5">
+          <h3 className="px-5 text-[10px] font-semibold tracking-[0.15em] text-slate-400/50 uppercase mb-2">
             {group.title}
           </h3>
           {group.items.map((item) => {
@@ -94,13 +104,18 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "group flex items-center gap-3 px-5 py-2 text-sm font-medium transition-all relative border-l-[3px]",
                   isActive 
-                    ? "bg-indigo-600 text-white" 
-                    : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    ? "border-indigo-500 bg-indigo-500/10 text-white" 
+                    : "border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <item.icon className={cn(
+                  "h-4 w-4 transition-all duration-300",
+                  isActive 
+                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
+                    : "text-slate-500 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
+                )} />
                 {item.name}
               </Link>
             )
