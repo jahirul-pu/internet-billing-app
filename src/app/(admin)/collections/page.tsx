@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Banknote, AlertTriangle, HandCoins, Clock, User } from "lucide-react"
+import { Banknote, AlertTriangle, HandCoins, Clock, User, Database } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -73,6 +73,7 @@ export default function ShiftCollectionsPage() {
   
   const [staffCollections, setStaffCollections] = useState<StaffCollection[]>([])
   const [summary, setSummary] = useState({
+    expectedCollection: 0,
     totalCollected: 0,
     totalUnpaid: 0,
     totalHeld: 0
@@ -112,6 +113,7 @@ export default function ShiftCollectionsPage() {
 
       setStaffCollections(mappedStaff)
       setSummary({
+        expectedCollection: revData.summary?.expected || 0,
         totalCollected: colData.total_collected_today || 0,
         totalUnpaid: revData.summary?.outstanding || 0,
         totalHeld: colData.total_collected_today || 0 // Assuming not yet handed over
@@ -128,7 +130,7 @@ export default function ShiftCollectionsPage() {
     fetchData()
   }, [fetchData])
 
-  const { totalCollected, totalUnpaid, totalHeld } = summary
+  const { expectedCollection, totalCollected, totalUnpaid, totalHeld } = summary
 
   return (
     <div className="flex-1 space-y-6 p-8 pt-6">
@@ -146,7 +148,17 @@ export default function ShiftCollectionsPage() {
       </div>
 
       {/* ── Daily Summary ── */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Expected Collection</CardTitle>
+            <Database className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">{expectedCollection.toLocaleString()} ৳</div>
+            <p className="text-xs text-muted-foreground">Monthly active user dues</p>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Cash Collected Today</CardTitle>

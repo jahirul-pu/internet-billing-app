@@ -120,7 +120,7 @@ export default function DashboardPage() {
   const [topConsumers, setTopConsumers] = useState<any[]>([])
   const [consumersLoading, setConsumersLoading] = useState(true)
   const [consumersTimeout, setConsumersTimeout] = useState(false)
-  const [revenue, setRevenue] = useState({ collected: 0, collected_field: 0, collected_office: 0, outstanding: 0 })
+  const [revenue, setRevenue] = useState({ expected: 0, collected: 0, collected_field: 0, collected_office: 0, outstanding: 0 })
   const [errorCount, setErrorCount] = useState(0)
 
   // VLAN uplink state
@@ -335,7 +335,22 @@ export default function DashboardPage() {
       </div>
 
       {/* Revenue Snapshot Row */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
+         <Card className="shadow-none border border-blue-200 bg-blue-50/10">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Expected Collection</CardTitle>
+               <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                  <Database className="h-4 w-4 text-blue-600" />
+               </div>
+            </CardHeader>
+            <CardContent>
+               <div className="text-3xl font-bold text-blue-600">৳ {(revenue.expected || 0).toLocaleString()}</div>
+               <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-blue-500" /> Monthly dues for active accounts
+               </p>
+            </CardContent>
+         </Card>
+
          <Card className="shadow-none border border-emerald-200 bg-emerald-50/10">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Collected This Month</CardTitle>
@@ -369,7 +384,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {cards.map((card) => (
           <Card key={card.title} className="shadow-none border border-border/60">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

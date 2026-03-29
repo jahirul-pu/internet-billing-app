@@ -39,33 +39,26 @@ export async function GET() {
       }
     })
 
-    // 2. Calculate Outstanding Balance
-    // Outstanding users: currentDay >= billing_day AND (last_payment_date is null OR not in current month)
+    // 2. Calculate Expected Collection & Outstanding
+    // Expected is simply the sum of package prices for all Active customers
     const { data: users, error: userError } = await supabaseAdmin
       .from('customers')
-      .select('id, last_payment_date, billing_day, packages(price)')
+      .select('packages(price)')
+      .eq('status', 'Active')
 
     if (userError) throw userError
 
-    let outstanding = 0
+    let expected = 0
     users.forEach((u: any) => {
-      const billingDay = u.billing_day || 1
-      const isPastBillingDay = currentDay >= billingDay
-      
-      let isPaidThisMonth = false
-      if (u.last_payment_date) {
-        const lpDate = new Date(u.last_payment_date)
-        isPaidThisMonth = (lpDate.getMonth() === now.getMonth() && lpDate.getFullYear() === now.getFullYear())
-      }
-
-      if (isPastBillingDay && !isPaidThisMonth) {
-        outstanding += (u.packages?.price || 0)
-      }
+      expected += (u.packages?.price || 0)
     })
+
+    const outstanding = Math.max(0, expected - collected)
 
     return NextResponse.json({
       success: true,
       summary: {
+        expected: parseFloat(expected.toFixed(2)),
         collected: parseFloat(collected.toFixed(2)),
         collected_office: parseFloat(collected_office.toFixed(2)),
         collected_field: parseFloat(collected_field.toFixed(2)),
