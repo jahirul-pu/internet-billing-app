@@ -135,6 +135,44 @@ export default function UsersPage() {
     package_id: ""
   })
 
+  // IP Auto-assignment State
+  const [availableIps, setAvailableIps] = useState<string[]>([])
+  const [isLoadingIps, setIsLoadingIps] = useState(false)
+
+  // Fetch available IPs when package changes
+  useEffect(() => {
+    let isMounted = true;
+    if (formData.package_id) {
+      const pkg = packages.find(p => p.id === formData.package_id)
+      if (pkg?.mikrotik_profile) {
+        setIsLoadingIps(true)
+        fetch(`/api/mikrotik/available-ips/${encodeURIComponent(pkg.mikrotik_profile)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (isMounted) {
+              if (data.success) {
+                setAvailableIps(data.available_ips || [])
+              } else {
+                setAvailableIps([])
+              }
+              setIsLoadingIps(false)
+            }
+          })
+          .catch(err => {
+            console.error("IP Fetch Error:", err)
+            if (isMounted) {
+              setAvailableIps([])
+              setIsLoadingIps(false)
+            }
+          })
+      }
+    } else {
+      setAvailableIps([])
+    }
+    
+    return () => { isMounted = false }
+  }, [formData.package_id, packages])
+
   // ── Data Loading ──
   const loadData = useCallback(async (pageNum = page, querySearch = search, currentFilters = filters) => {
     try {
@@ -436,7 +474,11 @@ export default function UsersPage() {
                   <Label className="text-xs">Service Plan</Label>
                   <Select value={filters.plan} onValueChange={(v) => setFilters(f => ({ ...f, plan: v || "all" }))}>
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="All Plans" />
+                      <SelectValue placeholder="All Plans">
+                        {filters.plan !== "all" ? (
+                          packages.find(p => p.id === filters.plan)?.name || "Service Plan"
+                        ) : "All Plans"}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Plans</SelectItem>
@@ -618,21 +660,18 @@ export default function UsersPage() {
                     </div>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="ipAddr">
-                      IP Address <span className="text-muted-foreground font-normal">(leave blank for dynamic)</span>
-                    </Label>
-                    <Input
-                      id="ipAddr"
-                      placeholder="e.g. 10.0.0.120"
-                      value={formData.ip_address}
-                      onChange={(e) => setFormData({ ...formData, ip_address: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
                     <Label>Internet Package</Label>
-                    <Select required onValueChange={(val: any) => setFormData({ ...formData, package_id: val })}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select a package" />
+                    <Select 
+                      required 
+                      value={formData.package_id} 
+                      onValueChange={(val: any) => setFormData({ ...formData, package_id: val, ip_address: "" })}
+                    >
+                      <SelectTrigger className="w-full h-10">
+                        <SelectValue placeholder="Select a package">
+                          {formData.package_id ? (
+                            packages.find(p => p.id === formData.package_id)?.name || "Select a package"
+                          ) : null}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {packages.length === 0 ? (
@@ -645,6 +684,40 @@ export default function UsersPage() {
                               {pkg.name} — {pkg.price} ৳
                             </SelectItem>
                           ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>
+                      IP Address <span className="text-muted-foreground font-normal">(auto-assign or select static)</span>
+                    </Label>
+                    <Select 
+                      value={formData.ip_address || "auto"} 
+                      onValueChange={(val: any) => setFormData({ ...formData, ip_address: val === 'auto' ? '' : val })}
+                      disabled={!formData.package_id || isLoadingIps}
+                    >
+                      <SelectTrigger className="w-full h-10 flex-1">
+                        {isLoadingIps ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <RefreshCcw className="h-4 w-4 animate-spin" />
+                            <span>Calculating available IPs...</span>
+                          </div>
+                        ) : (
+                          <SelectValue placeholder="Dynamic Auto-Assign">
+                            {formData.ip_address ? formData.ip_address : "Dynamic Auto-Assign"}
+                          </SelectValue>
+                        )}
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Dynamic Auto-Assign (DHCP/Pool)</SelectItem>
+                        {availableIps.length > 0 && availableIps.map(ip => (
+                          <SelectItem key={ip} value={ip}>{ip}</SelectItem>
+                        ))}
+                        {availableIps.length === 0 && formData.package_id && !isLoadingIps && (
+                          <div className="p-2 text-sm text-muted-foreground flex items-center">
+                            <FileWarning className="w-4 h-4 mr-2"/> No static IPs available in pool
+                          </div>
                         )}
                       </SelectContent>
                     </Select>
@@ -749,7 +822,7 @@ export default function UsersPage() {
                       <TableCell className="font-medium">
                         <button 
                           onClick={() => handleDetailOpen(user)}
-                          className="hover:underline text-left focus:outline-none"
+                          className="font-medium hover:text-primary transition-colors text-left focus:outline-none"
                         >
                           {user.full_name}
                         </button>

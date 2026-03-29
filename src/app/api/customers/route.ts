@@ -120,6 +120,11 @@ export async function POST(request: Request) {
         pppArgs.push(`=caller-id=${body.mac_address}`)
       }
 
+      // Assign a specific static IP if selected (remote-address)
+      if (body.ip_address && body.ip_address !== 'auto') {
+        pppArgs.push(`=remote-address=${body.ip_address}`)
+      }
+
       await mikrotikApi.write('/ppp/secret/add', pppArgs)
       console.log(`Successfully provisioned PPPoE user ${pppoe_username} on MikroTik.`)
     } catch (err: any) {

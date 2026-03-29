@@ -274,10 +274,10 @@ export default function DashboardPage() {
           </p>
         </div>
         {errorCount > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-red-50 text-red-600 rounded-md text-sm font-medium border border-red-200">
-            <AlertTriangle className="h-4 w-4" />
+          <Badge variant="destructive" className="h-7 px-3 gap-2 text-xs font-semibold uppercase animate-pulse">
+            <AlertTriangle className="h-3.5 w-3.5" />
             INTERFACE ERROR ({errorCount})
-          </div>
+          </Badge>
         )}
       </div>
 
@@ -474,12 +474,10 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
                        <span className="text-sm font-bold">{user.totalGB} <span className="text-[10px] font-normal text-muted-foreground">GB</span></span>
-                       <div className="w-20 bg-muted rounded-full h-1 overflow-hidden">
-                          <div 
-                            className="bg-primary h-full transition-all" 
-                            style={{ width: `${(user.totalGB / (topConsumers[0]?.totalGB || 1)) * 100}%` }} 
-                          />
-                       </div>
+                       <Progress 
+                          value={(user.totalGB / (topConsumers[0]?.totalGB || 1)) * 100} 
+                          className="h-1 w-20 bg-muted rounded-full"
+                       />
                     </div>
                   </div>
                 )) : consumersLoading && !consumersTimeout ? (
@@ -503,20 +501,16 @@ export default function DashboardPage() {
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-6 py-6 items-center">
                 <div className="space-y-1">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">CPU Load</p>
-                    <div className="flex items-end gap-2 text-xl font-bold">
-                        {stats?.cpu_load}%
-                        <div className="w-full bg-muted rounded-full h-1.5 mb-2 overflow-hidden">
-                            <div className="bg-primary h-full transition-all duration-500" style={{ width: `${stats?.cpu_load}%` }} />
-                        </div>
+                    <div className="flex flex-col gap-2">
+                        <span className="text-xl font-bold">{stats?.cpu_load}%</span>
+                        <Progress value={stats?.cpu_load || 0} className="h-1.5" />
                     </div>
                 </div>
                 <div className="space-y-1">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Router Memory</p>
-                    <div className="flex items-end gap-2 text-xl font-bold">
-                        {stats?.mem_usage}%
-                        <div className="w-full bg-muted rounded-full h-1.5 mb-2 overflow-hidden">
-                            <div className="bg-blue-500 h-full transition-all duration-500" style={{ width: `${stats?.mem_usage}%` }} />
-                        </div>
+                    <div className="flex flex-col gap-2">
+                        <span className="text-xl font-bold">{stats?.mem_usage}%</span>
+                        <Progress value={stats?.mem_usage || 0} className="h-1.5 bg-blue-500/20" />
                     </div>
                 </div>
                 <div className="space-y-1">

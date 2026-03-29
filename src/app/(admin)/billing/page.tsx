@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 /* ── Combobox (user search DB integration) ── */
 
@@ -214,9 +215,9 @@ export default function BillingPage() {
     setIsSubmitting(true)
 
     try {
-      if (!selectedUser) { alert("Please select a customer."); return; }
-      if (!amount) { alert("Please enter the amount."); return; }
-      if (!method) { alert("Please select a payment method."); return; }
+      if (!selectedUser) { toast.error("Please select a customer."); return; }
+      if (!amount) { toast.error("Please enter the amount."); return; }
+      if (!method) { toast.error("Please select a payment method."); return; }
 
       const payload = {
         customer_id: selectedUser,
@@ -225,8 +226,6 @@ export default function BillingPage() {
         transaction_type: transactionType,
         status: "completed",       
         reference_id: `POS-${Math.random().toString(36).substring(7).toUpperCase()}`,
-        // Note: For actual date recording using specific timestamps, we'd pass it in payload if supported 
-        // by the backend, but backend inherently stamps created_at = now() via Postgres default natively
       }
 
       const response = await fetch('/api/transactions', {
@@ -238,24 +237,25 @@ export default function BillingPage() {
       const responseData = await response.json()
 
       if (!response.ok) {
-        alert(`Error: ${responseData.error}`)
+        toast.error(responseData.error || "Failed to process transaction")
         return
       }
 
-      // Success Automation Response handled
-      alert(`✅ Transaction Processed! +30 Days automatically added to Customer bounds. \n\nNew Expiration Timeline: ${format(new Date(responseData.new_expiry), "PPP")}`)
+      toast.success(
+        `Transaction Processed!`,
+        { description: `New Expiry: ${format(new Date(responseData.new_expiry), "PPP")}` }
+      )
       
       setDialogOpen(false)
       loadData()
       
-      // Cleanup
       setSelectedUser("")
       setAmount("")
       setMethod("")
 
     } catch (e) {
       console.error(e)
-      alert("System runtime error generating ledger sync.")
+      toast.error("System runtime error generating ledger sync.")
     } finally {
       setIsSubmitting(false)
     }
