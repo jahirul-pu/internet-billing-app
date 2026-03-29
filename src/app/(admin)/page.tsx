@@ -97,9 +97,9 @@ const bandwidthChartConfig = {
 } satisfies ChartConfig
 
 const statusChartConfig = {
-  online: { label: "Online", color: "hsl(var(--chart-emerald))" },
-  offline: { label: "Offline", color: "hsl(var(--chart-slate))" },
-  deactivated: { label: "Deactivated", color: "hsl(var(--chart-red))" },
+  online: { label: "Online", color: "#10b981" },
+  offline: { label: "Offline", color: "#94a3b8" },
+  deactivated: { label: "Deactivated", color: "#ef4444" },
 } satisfies ChartConfig
 
 /* ── Core VLAN Uplinks Config ── */
@@ -312,9 +312,9 @@ export default function DashboardPage() {
   ]
 
   const pieData = analytics ? [
-    { name: "Online", value: analytics.online, color: "hsl(var(--chart-emerald))" },
-    { name: "Offline", value: analytics.offline, color: "hsl(var(--chart-slate))" },
-    { name: "Deactivated", value: analytics.deactivated, color: "hsl(var(--chart-red))" },
+    { name: "Online", value: analytics.online, color: "#10b981" },
+    { name: "Offline", value: analytics.offline, color: "#94a3b8" },
+    { name: "Deactivated", value: analytics.deactivated, color: "#ef4444" },
   ] : []
 
   return (

@@ -40,11 +40,10 @@ export async function GET() {
     })
 
     // 2. Calculate Expected Collection & Outstanding
-    // Expected is simply the sum of package prices for all Active customers
+    // Expected is simply the sum of package prices for all customers
     const { data: users, error: userError } = await supabaseAdmin
       .from('customers')
       .select('packages(price)')
-      .eq('status', 'Active')
 
     if (userError) throw userError
 
