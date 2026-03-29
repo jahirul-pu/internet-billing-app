@@ -55,53 +55,7 @@ interface DispatchTask {
   status: TaskStatus
 }
 
-const initialTasks: DispatchTask[] = [
-  {
-    id: "TSK-001",
-    type: "New Connection",
-    technicianName: "Arif Hossain",
-    technicianInitials: "AH",
-    customerName: "Md. Jamil",
-    zone: "Mirpur 10, Block C",
-    status: "Pending",
-  },
-  {
-    id: "TSK-002",
-    type: "Maintenance",
-    technicianName: "Sajid Ali",
-    technicianInitials: "SA",
-    customerName: "Rina Begum",
-    zone: "Uttara Sector 4",
-    status: "Pending",
-  },
-  {
-    id: "TSK-003",
-    type: "Device Recovery",
-    technicianName: "Arif Hossain",
-    technicianInitials: "AH",
-    customerName: "Kamal Hasan",
-    zone: "Dhanmondi 27",
-    status: "In Progress",
-  },
-  {
-    id: "TSK-004",
-    type: "New Connection",
-    technicianName: "Fahim Rahman",
-    technicianInitials: "FR",
-    customerName: "Sonia Akter",
-    zone: "Banani Block F",
-    status: "Completed",
-  },
-  {
-    id: "TSK-005",
-    type: "Maintenance",
-    technicianName: "Sajid Ali",
-    technicianInitials: "SA",
-    customerName: "Zakir Hossain",
-    zone: "Gulshan 1",
-    status: "Completed",
-  },
-]
+const initialTasks: DispatchTask[] = []
 
 /* ── Helpers ── */
 

@@ -53,13 +53,7 @@ interface Voucher {
   createdAt: string
 }
 
-const mockVouchers: Voucher[] = [
-  { id: "V-101", pin: "8472-9104", dataLimit: "1 GB", timeLimit: "2 Hours", price: "20", status: "Unused", createdAt: "2026-03-26T08:00:00Z" },
-  { id: "V-102", pin: "3921-5582", dataLimit: "10 GB", timeLimit: "7 Days", price: "150", status: "Active", createdAt: "2026-03-25T14:30:00Z" },
-  { id: "V-103", pin: "9912-4410", dataLimit: "Unlimited", timeLimit: "1 Hour", price: "10", status: "Expired", createdAt: "2026-03-24T09:15:00Z" },
-  { id: "V-104", pin: "1104-5829", dataLimit: "1 GB", timeLimit: "2 Hours", price: "20", status: "Unused", createdAt: "2026-03-26T08:00:00Z" },
-  { id: "V-105", pin: "7742-1092", dataLimit: "5 GB", timeLimit: "1 Day", price: "50", status: "Unused", createdAt: "2026-03-26T08:00:00Z" },
-]
+const mockVouchers: Voucher[] = []
 
 export default function HotspotPage() {
   const [vouchers] = useState<Voucher[]>(mockVouchers)

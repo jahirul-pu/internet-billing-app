@@ -11,14 +11,17 @@ datasource db {
 
 enum UserRole {
   admin
-  agent
   technician
+  support
+  billing_staff
 }
 
 enum CustomerStatus {
   active
   suspended
   cancelled
+  deactivated
+  offline
 }
 
 enum PaymentMethod {
@@ -107,7 +110,7 @@ model Zone {
   @@map("zones")
 }
 
-// 2. 'users' Table (System Staff & Agents)
+// 2. 'users' Table (System Staff)
 model User {
   id                    String        @id @default(uuid()) @db.Uuid
   fullName              String        @map("full_name")
@@ -115,12 +118,10 @@ model User {
   phone                 String        @unique
   zoneId                String?       @map("zone_id") @db.Uuid
   zone                  Zone?         @relation(fields: [zoneId], references: [id])
-  walletBalance         Decimal       @default(0) @db.Decimal(10, 2) @map("wallet_balance") // For agents
   isActive              Boolean       @default(true) @map("is_active")
 
   // Relationships
-  customersAsAgent      Customer[]    @relation("AgentCustomers")
-  collectedTransactions Transaction[] @relation("AgentTransactions")
+  collectedTransactions Transaction[] @relation("CollectorTransactions")
   assignedInventory     Inventory[]   @relation("TechnicianInventory")
   assignedTickets       Ticket[]      @relation("TechnicianTickets")
   recordedExpenses      Expense[]     @relation("ExpenseRecorder")
@@ -137,8 +138,11 @@ model Package {
   name            String
   price           Decimal    @db.Decimal(10, 2)
   mikrotikProfile String     @map("mikrotik_profile")
-  downloadSpeed   Int        @map("download_speed") // Mbps
-  uploadSpeed     Int        @map("upload_speed")   // Mbps
+  speedRawIig     Int        @map("speed_raw_iig") // Mbps
+  speedGgc        Int        @map("speed_ggc")     // Mbps
+  speedFb         Int        @map("speed_fb")      // Mbps
+  speedBdix       Int        @map("speed_bdix")    // Mbps
+  addressList     String?    @map("address_list")
 
   customers       Customer[]
 
@@ -160,15 +164,13 @@ model Customer {
   macAddress       String?       @map("mac_address")
   status           CustomerStatus
   expiryDate       DateTime      @map("expiry_date")
+  customGracePeriodDays Int?     @map("custom_grace_period_days")
 
   packageId        String        @map("package_id") @db.Uuid
   package          Package       @relation(fields: [packageId], references: [id])
 
   zoneId           String        @map("zone_id") @db.Uuid
   zone             Zone          @relation(fields: [zoneId], references: [id])
-
-  agentId          String?       @map("agent_id") @db.Uuid
-  agent            User?         @relation("AgentCustomers", fields: [agentId], references: [id])
 
   transactions     Transaction[]
   deployedHardware Inventory[]   @relation("CustomerHardware")
@@ -186,8 +188,8 @@ model Transaction {
   customerId      String            @map("customer_id") @db.Uuid
   customer        Customer          @relation(fields: [customerId], references: [id])
 
-  agentId         String?           @map("agent_id") @db.Uuid
-  agent           User?             @relation("AgentTransactions", fields: [agentId], references: [id])
+  collectedById   String?           @map("collected_by_id") @db.Uuid
+  collectedBy     User?             @relation("CollectorTransactions", fields: [collectedById], references: [id])
 
   amount          Decimal           @db.Decimal(10, 2)
   paymentMethod   PaymentMethod     @map("payment_method")
@@ -278,4 +280,20 @@ model Expense {
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
   @@map("expenses")
+}
+
+// 10. 'system_settings' Table (Single-Row Configuration)
+model SystemSettings {
+  id                  String   @id @default(uuid()) @db.Uuid
+  mikrotikIp          String?  @map("mikrotik_ip")
+  mikrotikApiPort     Int      @default(9394) @map("mikrotik_api_port")
+  mikrotikApiUser     String?  @map("mikrotik_api_user")
+  mikrotikApiPassword String?  @map("mikrotik_api_password")
+  globalGracePeriod   Int      @default(7) @map("global_grace_period")
+  mikrotikSuspendedProfile String @default("Suspended") @map("mikrotik_suspended_profile")
+
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
 }

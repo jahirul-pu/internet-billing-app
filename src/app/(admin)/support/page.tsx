@@ -61,54 +61,9 @@ interface TicketData {
   status: "Open" | "In Progress" | "Resolved"
 }
 
-const tickets: TicketData[] = [
-  {
-    id: "TCK-1001",
-    customer: "Rahim Uddin",
-    category: "Fiber Cut",
-    priority: "High",
-    status: "Open",
-  },
-  {
-    id: "TCK-1002",
-    customer: "Fatima Akter",
-    category: "Slow Speed",
-    priority: "Medium",
-    status: "In Progress",
-  },
-  {
-    id: "TCK-1003",
-    customer: "Kamal Hossain",
-    category: "Router Issue",
-    priority: "Low",
-    status: "Resolved",
-  },
-  {
-    id: "TCK-1004",
-    customer: "Nasrin Sultana",
-    category: "Payment Issue",
-    priority: "High",
-    status: "Open",
-  },
-  {
-    id: "TCK-1005",
-    customer: "Tanvir Ahmed",
-    category: "Slow Speed",
-    priority: "Medium",
-    status: "Resolved",
-  },
-]
+const tickets: TicketData[] = []
 
-const allCustomers = [
-  "Rahim Uddin",
-  "Fatima Akter",
-  "Kamal Hossain",
-  "Nasrin Sultana",
-  "Tanvir Ahmed",
-  "Arif Hasan",
-  "Sabrina Chowdhury",
-  "Imran Khan",
-]
+const allCustomers: string[] = []
 
 /* ── Combobox (customer search) ── */
 

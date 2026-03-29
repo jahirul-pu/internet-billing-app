@@ -1,13 +1,80 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/db'
+import { connectMikrotik } from '@/lib/mikrotik'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params
+    const { data, error } = await supabaseAdmin
+      .from('customers')
+      .select(`
+        *,
+        packages:package_id ( name, price, mikrotik_profile ),
+        zones:zone_id ( name )
+      `)
+      .eq('id', id)
+      .single()
+
+    if (error) {
+      console.error('Supabase Fetch Error:', error)
+      return NextResponse.json({ error: error.message }, { status: 404 })
+    }
+
+    return NextResponse.json(data)
+  } catch (error: any) {
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 })
+  }
+}
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  let mikrotikApi
   try {
     const { id } = await context.params
     const body = await request.json()
 
-    // Optionally extract the 'id' from the body if the frontend accidentally passed it,
-    // to prevent Supabase from throwing an error about updating a primary key.
+    // 1. If we are updating sensitive network credentials, we MUST sync to MikroTik
+    if (body.pppoe_username || body.pppoe_password) {
+      // Fetch the CURRENT record so we know the OLD username (to find the secret on the router)
+      const { data: currentCustomer } = await supabaseAdmin
+        .from('customers')
+        .select('pppoe_username, pppoe_password')
+        .eq('id', id)
+        .single()
+
+      if (currentCustomer) {
+        try {
+          mikrotikApi = await connectMikrotik()
+          
+          // Find the secret ID based on the OLD username
+          const secrets = await mikrotikApi.write('/ppp/secret/print', [
+            `?name=${currentCustomer.pppoe_username}`
+          ])
+
+          if (secrets && secrets.length > 0) {
+            const secretId = secrets[0]['.id']
+            const updateArgs: string[] = [`=.id=${secretId}`]
+            
+            if (body.pppoe_username) updateArgs.push(`=name=${body.pppoe_username}`)
+            if (body.pppoe_password) updateArgs.push(`=password=${body.pppoe_password}`)
+            if (body.mac_address !== undefined) updateArgs.push(`=caller-id=${body.mac_address || ''}`)
+
+            await mikrotikApi.write('/ppp/secret/set', updateArgs)
+            console.log(`Synced MikroTik secret updates for ${id}`)
+          }
+        } catch (err: any) {
+          console.error('MikroTik Sync Error during PATCH:', err)
+          return NextResponse.json(
+            { error: 'Failed to sync changes to MikroTik router', details: err.message },
+            { status: 400 }
+          )
+        } finally {
+          if (mikrotikApi) await mikrotikApi.close()
+        }
+      }
+    }
+
     const { id: _removedId, ...updatePayload } = body
 
     const { data, error } = await supabaseAdmin

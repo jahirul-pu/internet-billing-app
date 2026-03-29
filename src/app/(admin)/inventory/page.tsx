@@ -73,56 +73,7 @@ interface InventoryItem {
   assignedTo: string | null
 }
 
-const mockInventory: InventoryItem[] = [
-  {
-    id: "INV-1001",
-    name: "V-SOL 1G EPS ONU",
-    category: "ONU",
-    serial: "E0:67:B3:2A:1B:FF",
-    status: "Deployed",
-    assignedTo: "Rahim Uddin (User)",
-  },
-  {
-    id: "INV-1002",
-    name: "TP-Link Archer C54",
-    category: "Router",
-    serial: "SN-9348123910",
-    status: "In Stock",
-    assignedTo: null,
-  },
-  {
-    id: "INV-1003",
-    name: "2-Core Drop Fiber (1000m)",
-    category: "Fiber Roll",
-    serial: "ROLL-A492",
-    status: "In Stock",
-    assignedTo: null,
-  },
-  {
-    id: "INV-1004",
-    name: "V-SOL 4-Port OLT",
-    category: "Switch",
-    serial: "VS-OLT-4P-9921",
-    status: "Deployed",
-    assignedTo: "Mirpur POP (Core)",
-  },
-  {
-    id: "INV-1005",
-    name: "TP-Link Archer C6",
-    category: "Router",
-    serial: "SN-4412399002",
-    status: "Damaged",
-    assignedTo: "Return Pile",
-  },
-  {
-    id: "INV-1006",
-    name: "ZTE F660 ONU",
-    category: "ONU",
-    serial: "ZT:44:A1:CC:00:22",
-    status: "Deployed",
-    assignedTo: "Kamal Hossain (User)",
-  },
-]
+const mockInventory: InventoryItem[] = []
 
 export default function InventoryPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -131,7 +82,7 @@ export default function InventoryPage() {
   // Calculations for KPI Cards
   const totalInStock = mockInventory.filter((i) => i.status === "In Stock").length
   const totalDeployed = mockInventory.filter((i) => i.status === "Deployed").length
-  const lowStockAlerts = 2 // Hardcoded mock alert number for visual layout
+  const lowStockAlerts = 0 // Hardcoded mock alert number for visual layout
 
   return (
     <div className="flex flex-col gap-6">

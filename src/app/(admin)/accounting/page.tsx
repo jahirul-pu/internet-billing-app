@@ -71,50 +71,14 @@ interface ExpenseItem {
   amount: number
 }
 
-const mockExpenses: ExpenseItem[] = [
-  {
-    id: "EXP-801",
-    date: "2026-03-25",
-    category: "Upstream Bandwidth",
-    description: "Monthly IIG Payment (Earth Telecommunication)",
-    amount: 145000,
-  },
-  {
-    id: "EXP-802",
-    date: "2026-03-22",
-    category: "Payroll",
-    description: "Field Technician Salary - March",
-    amount: 85000,
-  },
-  {
-    id: "EXP-803",
-    date: "2026-03-20",
-    category: "Fuel/Transport",
-    description: "Motorcycle Fuel for Line Repairs",
-    amount: 4500,
-  },
-  {
-    id: "EXP-804",
-    date: "2026-03-15",
-    category: "Office Rent",
-    description: "Mirpur Branch Office Rent",
-    amount: 25000,
-  },
-  {
-    id: "EXP-805",
-    date: "2026-03-10",
-    category: "Hardware/Equipment",
-    description: "Purchased 100x RJ45 Connectors & Cat6 Cable",
-    amount: 8200,
-  },
-]
+const mockExpenses: ExpenseItem[] = []
 
 export default function AccountingPage() {
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [date, setDate] = useState<Date>()
 
   // Calculations for KPI Cards
-  const totalRevenue = 425500 // Mock revenue
+  const totalRevenue = 0 // Mock revenue
   const totalExpenses = mockExpenses.reduce((sum, item) => sum + item.amount, 0)
   const netProfit = totalRevenue - totalExpenses
 

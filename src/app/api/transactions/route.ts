@@ -1,17 +1,18 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/db'
+import { connectMikrotik } from '@/lib/mikrotik'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    // Relational sync joining 'customers' mapping and identifying 'agent' origin points
+    // Relational sync joining 'customers' mapping and identifying payment collector
     const { data: transactions, error } = await supabaseAdmin
       .from('transactions')
       .select(`
         *,
         customer:customer_id ( full_name, pppoe_username ),
-        agent:agent_id ( full_name )
+        collected_by:collected_by_id ( full_name )
       `)
       .order('created_at', { ascending: false })
 
@@ -29,81 +30,141 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { customer_id, amount, payment_method, transaction_type } = body
+    const { customer_id, amount, transaction_type, payment_method, collected_by_id, reference_id } = body
 
-    // 1. Rigid payload validations before initiating transactional side-effects
+    // ── Step 0: Validate required fields ──
     if (!customer_id || !amount || !transaction_type) {
-       return NextResponse.json(
-         { error: 'customer_id, amount, and transaction_type are strictly required.' }, 
-         { status: 400 }
-       )
+      return NextResponse.json(
+        { error: 'customer_id, amount, and transaction_type are strictly required.' },
+        { status: 400 }
+      )
     }
 
-    // 2. Insert the payment ledger record initially into 'transactions'
-    const { data: transaction, error: txError } = await supabaseAdmin
-      .from('transactions')
-      .insert([body])
-      .select()
+    // ── Step 1: Fetch customer's current state BEFORE doing anything ──
+    const { data: customer, error: fetchError } = await supabaseAdmin
+      .from('customers')
+      .select('expiry_date, status, pppoe_username, package_id')
+      .eq('id', customer_id)
       .single()
 
-    if (txError) {
-      console.error('Record Generation Error:', txError)
-      return NextResponse.json({ error: txError.message }, { status: 400 })
+    if (fetchError) {
+      console.error('Customer lookup failed:', fetchError)
+      return NextResponse.json({ error: `Customer not found: ${fetchError.message}` }, { status: 404 })
     }
 
-    // 3. Automated Trigger: Only process +30 days logic securely IF the transaction succeeds
+    // ── Step 2: Calculate the new expiry date ──
+    let newExpiryDate: string | null = null
+
     if (transaction_type === 'monthly_bill' || transaction_type === 'new_connection') {
-      
-      const { data: customer, error: fetchError } = await supabaseAdmin
-        .from('customers')
-        .select('expiry_date')
-        .eq('id', customer_id)
-        .single()
-
-      if (fetchError) {
-        console.error('Failed retrieving linked customer constraints:', fetchError)
-        return NextResponse.json({ error: fetchError.message }, { status: 400 })
-      }
-
       const currentExpiry = new Date(customer.expiry_date)
       const now = new Date()
 
-      // Chronological offset logic:
-      // If the client's term already expired weeks ago, calculate 30 days starting precisely FROM NOW.
-      // If the client simply paid early (proactive), cleanly add 30 days to their CURRENT future expiry!
-      const activeBaseDate = currentExpiry > now ? currentExpiry : now
-      
-      const newExpiryTime = new Date(activeBaseDate)
-      newExpiryTime.setDate(newExpiryTime.getDate() + 30)
+      // If already expired (or suspended), extend from today. If still active, stack on top.
+      const baseDate = currentExpiry > now ? currentExpiry : now
+      const newExpiry = new Date(baseDate)
+      newExpiry.setDate(newExpiry.getDate() + 30)
+      newExpiryDate = newExpiry.toISOString()
+    }
 
-      // 4. Overwrite their account metrics enforcing 'active' networking states directly
+    // ── Step 3: MikroTik Auto-Reactivation (if suspended) ──
+    let routerWarning: string | null = null
+    if (customer.status === 'suspended') {
+      try {
+        // Find the ORIGINAL profile from the packages table
+        const { data: pkg } = await supabaseAdmin
+          .from('packages')
+          .select('mikrotik_profile')
+          .eq('id', customer.package_id)
+          .single()
+
+        if (pkg?.mikrotik_profile) {
+          let mikrotikApi
+          try {
+            mikrotikApi = await connectMikrotik()
+            
+            // Step A: Restore Secret Profile
+            const secrets = await mikrotikApi.write('/ppp/secret/print', [`?name=${customer.pppoe_username}`])
+            if (secrets && secrets.length > 0) {
+              await mikrotikApi.write('/ppp/secret/set', [
+                `=.id=${secrets[0]['.id']}`,
+                `=profile=${pkg.mikrotik_profile}`
+              ])
+            }
+
+            // Step B & C: Find and Kick the Restricted Session
+            const activeSessions = await mikrotikApi.write('/ppp/active/print', [`?name=${customer.pppoe_username}`])
+            if (activeSessions && activeSessions.length > 0) {
+              for (const session of activeSessions) {
+                await mikrotikApi.write('/ppp/active/remove', [`=.id=${session['.id']}`])
+              }
+            }
+            console.log(`[Auto-Reactivate] Successfully restored ${customer.pppoe_username} on router.`)
+          } catch (err: any) {
+             console.error('MikroTik Reactivation Error:', err)
+             routerWarning = 'Payment logged, but router could not be reached for auto-reactivation. Please check MikroTik connection.'
+          } finally {
+            if (mikrotikApi) await mikrotikApi.close()
+          }
+        }
+      } catch (err) {
+        console.error('Package lookup failed during reactivation:', err)
+      }
+    }
+
+    // ── Step 4: Atomic Database Transaction ──
+    const insertPayload: Record<string, any> = {
+      customer_id,
+      amount,
+      transaction_type,
+      payment_method: payment_method || 'cash',
+      status: 'completed',
+    }
+    if (collected_by_id) insertPayload.collected_by_id = collected_by_id
+    if (reference_id) insertPayload.reference_id = reference_id
+
+    const { data: transaction, error: insertError } = await supabaseAdmin
+      .from('transactions')
+      .insert([insertPayload])
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Transaction insert failed:', insertError)
+      return NextResponse.json({ error: insertError.message }, { status: 400 })
+    }
+
+    // 4b. UPDATE the customer (only for billing/connection types)
+    if (newExpiryDate) {
       const { error: updateError } = await supabaseAdmin
         .from('customers')
-        .update({ 
-          expiry_date: newExpiryTime.toISOString(),
-          status: 'active' 
+        .update({
+          expiry_date: newExpiryDate,
+          status: 'active',
         })
         .eq('id', customer_id)
 
       if (updateError) {
-        console.error('Failed writing the expiration timeline offset', updateError)
-        return NextResponse.json({ error: updateError.message }, { status: 400 })
+        console.error('Customer update failed, rolling back transaction:', updateError)
+        await supabaseAdmin.from('transactions').delete().eq('id', transaction.id)
+        return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
 
-      return NextResponse.json({ 
-         message: 'Payment logged dynamically and user package expiration efficiently extended by 30 net calendar days',
-         transaction,
-         new_expiry: newExpiryTime.toISOString()
-      }, { status: 201 })
+      return NextResponse.json({
+        message: routerWarning || 'Payment recorded and customer reactivated successfully.',
+        transaction,
+        new_expiry: newExpiryDate,
+        router_warning: routerWarning
+      }, { status: 200 })
     }
 
-    // Fallback if this was e.g., an ad-hoc 'hardware_fee' that doesn't natively grant internet time
-    return NextResponse.json({ 
-       message: 'Transaction permanently recorded. No expiration timelines altered.',
-       transaction 
-    }, { status: 201 })
+    return NextResponse.json({
+      message: 'Transaction recorded. No expiry changes applied.',
+      transaction,
+    }, { status: 200 })
 
   } catch (error: any) {
+    console.error('POST /api/transactions error:', error)
     return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 })
   }
 }
+

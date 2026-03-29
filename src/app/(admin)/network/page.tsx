@@ -11,7 +11,11 @@ import {
   Cpu,
   Thermometer,
   Wifi,
-  Laptop
+  Laptop,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
+  MessageSquare
 } from "lucide-react"
 import {
   Accordion,
@@ -28,6 +32,16 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 /* ── Network Data Interfaces ── */
@@ -322,8 +336,33 @@ function RenderDetails({ node }: { node: NetworkNode }) {
 }
 
 
+const securityAlerts = [
+  { id: "1", timestamp: "Today, 10:45 AM", type: "Rogue DHCP Detected", location: "10.0.1.15", severity: "High", action: "Suspend Rogue ONU", customerName: "Rahim Uddin", onuMac: "E0:67:B3:2A:1B:4C" },
+  { id: "2", timestamp: "Today, 09:12 AM", type: "MAC Loop Detected", location: "Splitter Section 6", severity: "High", action: "Suspend Rogue ONU", customerName: "Sonia Begum", onuMac: "A4:91:C2:55:FF:AA" },
+  { id: "3", timestamp: "Yesterday, 11:30 PM", type: "MAC Spoofing Attempt", location: "10.0.0.210", severity: "High", action: "Force PPPoE Re-authentication", customerName: "Kamal Hossain", onuMac: "E0:67:B3:9F:8D:11" }
+]
+
 export default function NetworkTopologyPage() {
   const [selectedNode, setSelectedNode] = useState<NetworkNode>(networkTree[0])
+  const [mitigatingAlert, setMitigatingAlert] = useState<any>(null)
+  const [mitigationStep, setMitigationStep] = useState(0)
+  const [isMitigateDialogOpen, setIsMitigateDialogOpen] = useState(false)
+
+  const handleMitigate = (alert: any) => {
+    setMitigatingAlert(alert)
+    setMitigationStep(0)
+    setIsMitigateDialogOpen(true)
+
+    setTimeout(() => {
+      setMitigationStep(1)
+      setTimeout(() => {
+        setMitigationStep(2)
+        setTimeout(() => {
+          setMitigationStep(3)
+        }, 1200)
+      }, 1200)
+    }, 1200)
+  }
 
   // Recursive component to render tree using Accordion for nested items,
   // preventing clicks from toggling accordion if we only want to select, 
@@ -388,8 +427,15 @@ export default function NetworkTopologyPage() {
       </div>
       <Separator className="shrink-0" />
 
-      <div className="flex flex-col md:flex-row gap-6 min-h-0 flex-1">
-        {/* ── Left Column: Fiber Tree ── */}
+      <Tabs defaultValue="topology" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="w-fit shrink-0 mb-4">
+          <TabsTrigger value="topology">Topology</TabsTrigger>
+          <TabsTrigger value="alerts">Security Alerts</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="topology" className="flex-1 min-h-0 m-0 border-0 p-0 outline-none">
+          <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-14rem)] md:h-full">
+            {/* ── Left Column: Fiber Tree ── */}
         <Card className="md:w-1/2 lg:w-2/5 flex flex-col h-full bg-card/50">
           <CardHeader className="py-4 shrink-0 border-b">
             <CardTitle className="text-lg">Network Map</CardTitle>
@@ -423,7 +469,98 @@ export default function NetworkTopologyPage() {
             <RenderDetails node={selectedNode} />
           </CardContent>
         </Card>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="alerts" className="flex-1 min-h-0 m-0 border-0 p-0 outline-none">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold tracking-tight">Active Infrastructure Threats</h3>
+            <div className="rounded-md border bg-card">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Threat Type</TableHead>
+                    <TableHead>Location/IP</TableHead>
+                    <TableHead>Severity</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {securityAlerts.map((alert) => (
+                    <TableRow key={alert.id}>
+                      <TableCell className="text-muted-foreground">{alert.timestamp}</TableCell>
+                      <TableCell className="font-medium">{alert.type}</TableCell>
+                      <TableCell className="font-mono text-sm">{alert.location}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn(
+                          alert.severity === "High" ? "border-red-500 text-red-500 bg-red-50 dark:bg-red-500/10" : "border-amber-500 text-amber-500 bg-amber-50 dark:bg-amber-500/10"
+                        )}>
+                          {alert.severity}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="font-medium"
+                          onClick={() => handleMitigate(alert)}
+                        >
+                          {alert.action}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={isMitigateDialogOpen} onOpenChange={setIsMitigateDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Mitigating Threat: {mitigatingAlert?.type}</DialogTitle>
+            <DialogDescription>
+              Executing automated security protocols for {mitigatingAlert?.customerName || "Device"}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-6">
+            <div className="flex items-center gap-4">
+              {mitigationStep >= 1 ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : <Loader2 className="h-5 w-5 text-primary animate-spin" />}
+              <div className="flex-1">
+                <p className="text-sm font-medium">Surgical Strike: {mitigatingAlert?.action}</p>
+                <p className="text-xs text-muted-foreground">Targeting MAC: {mitigatingAlert?.onuMac} on {mitigatingAlert?.location}</p>
+              </div>
+            </div>
+            
+            <div className={cn("flex items-center gap-4 transition-opacity", mitigationStep >= 1 ? "opacity-100" : "opacity-40")}>
+              {mitigationStep >= 2 ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : (mitigationStep === 1 ? <Loader2 className="h-5 w-5 text-primary animate-spin" /> : <AlertTriangle className="h-5 w-5 text-muted-foreground" />)}
+              <div className="flex-1">
+                <p className="text-sm font-medium">Auto-Ticketing</p>
+                <p className="text-xs text-muted-foreground">Generating High Priority Ticket: Rogue Device Isolated - {mitigatingAlert?.customerName}</p>
+              </div>
+            </div>
+
+            <div className={cn("flex items-center gap-4 transition-opacity", mitigationStep >= 2 ? "opacity-100" : "opacity-40")}>
+              {mitigationStep >= 3 ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : (mitigationStep === 2 ? <Loader2 className="h-5 w-5 text-primary animate-spin" /> : <MessageSquare className="h-5 w-5 text-muted-foreground" />)}
+              <div className="flex-1">
+                <p className="text-sm font-medium">Customer Alert SMS</p>
+                <p className="text-xs text-muted-foreground">Dispatching notification to {mitigatingAlert?.customerName}: "Security Alert: A router misconfiguration has been detected..."</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button 
+              disabled={mitigationStep < 3} 
+              onClick={() => setIsMitigateDialogOpen(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Settings, Router, CreditCard } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Settings, Router, CreditCard, HardDrive, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -21,15 +21,127 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { BackupsTab } from "./components/backups-tab"
+import { toast } from "sonner"
 
 const navigation = [
   { name: "General", id: "general", icon: Settings },
   { name: "Router Integration", id: "router", icon: Router },
+  { name: "Infrastructure Backups", id: "backups", icon: HardDrive },
   { name: "Billing Preferences", id: "billing", icon: CreditCard },
 ]
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("general")
+
+  // Router integration state
+  const [routerIp, setRouterIp] = useState("")
+  const [apiPort, setApiPort] = useState("9394")
+  const [apiUser, setApiUser] = useState("")
+  const [apiPassword, setApiPassword] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+
+  // Load settings from Supabase on mount
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const res = await fetch("/api/settings")
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.mikrotik_ip) setRouterIp(data.mikrotik_ip)
+        if (data.mikrotik_api_port) setApiPort(String(data.mikrotik_api_port))
+        if (data.mikrotik_api_user) setApiUser(data.mikrotik_api_user)
+        if (data.mikrotik_api_password) setApiPassword(data.mikrotik_api_password)
+      } catch {
+        // Silently fail on first load
+      }
+    }
+    loadSettings()
+  }, [])
+
+  // Save router credentials
+  async function handleSaveRouter(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mikrotik_ip: routerIp,
+          mikrotik_api_port: parseInt(apiPort) || 9394,
+          mikrotik_api_user: apiUser,
+          mikrotik_api_password: apiPassword,
+        }),
+      })
+      
+      let data;
+      try {
+        data = await res.json()
+      } catch {
+        throw new Error("Server returned an invalid response (HTML/Text). Please check backend logs.")
+      }
+
+      if (!res.ok) {
+        const errorMsg = typeof data.error === 'object' ? data.error.message || JSON.stringify(data.error) : data.error
+        throw new Error(errorMsg || "Failed to save configuration.")
+      }
+
+      toast.success("Router configuration saved successfully.")
+    } catch (err: any) {
+      console.error('Save Settings Error:', err)
+      toast.error("Save Failed", {
+        description: err.message || "Unknown error occurred.",
+        duration: 5000,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Test MikroTik connection
+  async function handleTestConnection(e: React.MouseEvent) {
+    e.preventDefault()
+    setTesting(true)
+    try {
+      const res = await fetch("/api/mikrotik/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          host: routerIp,
+          port: apiPort,
+          user: apiUser,
+          password: apiPassword,
+        }),
+      })
+
+      let data;
+      try {
+        data = await res.json()
+      } catch {
+        throw new Error("Server returned an invalid response (HTML/Text). Please check backend logs.")
+      }
+
+      if (!res.ok) {
+        const errorMsg = typeof data.error === 'object' ? data.error.message || JSON.stringify(data.error) : data.error
+        throw new Error(errorMsg || "Connection Failed")
+      }
+
+      toast.success("MikroTik Connection Successful!", {
+        description: `Uptime: ${data.uptime} · CPU Load: ${data.cpu_load}% · ${data.board_name} (ROS ${data.version})`,
+        duration: 5000,
+      })
+    } catch (err: any) {
+      console.error('Test Connection Error:', err)
+      toast.error("MikroTik Connection Failed", {
+        description: err.message || "Unknown error occurred.",
+        duration: 8000,
+      })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -137,10 +249,7 @@ export default function SettingsPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <form
-                    onSubmit={(e) => e.preventDefault()}
-                    className="space-y-6"
-                  >
+                  <form onSubmit={handleSaveRouter} className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="grid gap-2">
                         <Label htmlFor="router-ip">MikroTik IP Address</Label>
@@ -148,6 +257,8 @@ export default function SettingsPage() {
                           id="router-ip"
                           placeholder="e.g. 192.168.88.1"
                           className="font-mono"
+                          value={routerIp}
+                          onChange={(e) => setRouterIp(e.target.value)}
                         />
                       </div>
                       <div className="grid gap-2">
@@ -155,14 +266,20 @@ export default function SettingsPage() {
                         <Input
                           id="api-port"
                           type="number"
-                          defaultValue="8728"
                           className="font-mono"
+                          value={apiPort}
+                          onChange={(e) => setApiPort(e.target.value)}
                         />
                       </div>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="api-user">API Username</Label>
-                      <Input id="api-user" placeholder="admin" />
+                      <Input
+                        id="api-user"
+                        placeholder="admin"
+                        value={apiUser}
+                        onChange={(e) => setApiUser(e.target.value)}
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="api-password">API Password</Label>
@@ -170,18 +287,33 @@ export default function SettingsPage() {
                         id="api-password"
                         type="password"
                         placeholder="••••••••"
+                        value={apiPassword}
+                        onChange={(e) => setApiPassword(e.target.value)}
                       />
                     </div>
                     <div className="flex justify-between items-center mt-4 pt-4 border-t">
-                      <Button type="button" variant="secondary">
-                        Test Connection
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={testing}
+                        onClick={(e) => handleTestConnection(e)}
+                      >
+                        {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {testing ? "Testing..." : "Test Connection"}
                       </Button>
-                      <Button type="submit">Save Configuration</Button>
+                      <Button type="submit" disabled={saving}>
+                        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {saving ? "Saving..." : "Save Configuration"}
+                      </Button>
                     </div>
                   </form>
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {activeTab === "backups" && (
+            <BackupsTab />
           )}
 
           {activeTab === "billing" && (
