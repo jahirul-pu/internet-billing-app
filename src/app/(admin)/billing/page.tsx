@@ -62,15 +62,17 @@ function UserCombobox({
   const [search, setSearch] = useState("")
 
   const filtered = useMemo(
-    () =>
-      users.filter((u) =>
-        u.full_name?.toLowerCase().includes(search.toLowerCase()) || 
-        u.pppoe_username?.toLowerCase().includes(search.toLowerCase())
-      ),
+    () => {
+      const safeUsers = Array.isArray(users) ? users : []
+      return safeUsers.filter((u) =>
+        u?.full_name?.toLowerCase().includes(search.toLowerCase()) || 
+        u?.pppoe_username?.toLowerCase().includes(search.toLowerCase())
+      )
+    },
     [search, users]
   )
   
-  const selectedUser = users.find(u => u.id === value)
+  const selectedUser = Array.isArray(users) ? users.find(u => u.id === value) : null
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -197,8 +199,8 @@ export default function BillingPage() {
       const txData = await txRes.json()
       const userData = await usersRes.json()
 
-      if (txRes.ok) setTransactions(txData)
-      if (usersRes.ok) setUsers(userData)
+      if (txRes.ok) setTransactions(Array.isArray(txData.data) ? txData.data : (Array.isArray(txData) ? txData : []))
+      if (usersRes.ok) setUsers(Array.isArray(userData.data) ? userData.data : (Array.isArray(userData) ? userData : []))
     } catch (e) {
       console.error(e)
     } finally {
