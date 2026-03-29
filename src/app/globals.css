@@ -120,11 +120,42 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    transition: background-color 200ms ease, border-color 200ms ease, opacity 200ms ease, transform 200ms ease, color 200ms ease, box-shadow 200ms ease;
   }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground transition-none;
   }
+  
   html {
     @apply font-sans;
+  }
+
+  /* ── Interactive Micro-interactions ── */
+  button, 
+  a, 
+  [role="button"],
+  .interactive-element {
+    @apply transition-all duration-200 ease-in-out;
+  }
+
+  button:hover:not(:disabled),
+  a:hover,
+  [role="button"]:hover {
+    @apply bg-accent/30;
+  }
+
+  /* Icon brightening in buttons/links */
+  button:hover svg,
+  a:hover svg,
+  [role="button"]:hover svg {
+    @apply text-foreground brightness-125 transition-all duration-200;
+  }
+
+  /* Subtitle/Click Feedback */
+  button:active:not(:disabled),
+  a:active,
+  [role="button"]:active {
+    @apply scale-[0.98] transition-all duration-100;
   }
 }
