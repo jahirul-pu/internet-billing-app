@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/db'
 import { connectMikrotik } from '@/lib/mikrotik'
+import { logSystemEvent } from '@/lib/logger'
+import { sendTransactionalSMS, smsTemplates } from '@/lib/sms'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
     // 3. Fetch Active Customers
     const { data: customers, error: customerError } = await supabaseAdmin
       .from('customers')
-      .select('id, full_name, pppoe_username, expiry_date, custom_grace_period_days')
+      .select('id, full_name, pppoe_username, phone, expiry_date, custom_grace_period_days, monthly_bill')
       .eq('status', 'active')
 
     if (customerError) throw customerError
@@ -41,18 +43,44 @@ export async function POST(request: Request) {
     }
 
     const now = new Date()
-    const dropList = customers.filter((user) => {
+    const dropList: any[] = []
+    const warningList: any[] = []
+    
+    customers.forEach((user) => {
       const graceDays = user.custom_grace_period_days ?? globalGrace
       const dropDate = new Date(user.expiry_date)
       dropDate.setDate(dropDate.getDate() + graceDays)
-      return dropDate < now
+      
+      const tomorrow = new Date(now)
+      tomorrow.setDate(now.getDate() + 1)
+      
+      const isDueTomorrow = dropDate.toISOString().split('T')[0] === tomorrow.toISOString().split('T')[0]
+
+      if (dropDate < now) {
+        dropList.push(user)
+      } else if (isDueTomorrow) {
+        warningList.push(user)
+      }
     })
 
-    if (dropList.length === 0) {
-      return NextResponse.json({ message: 'No users due for suspension today.' })
+    console.log(`[Cron] Found ${warningList.length} users to warn, and ${dropList.length} users to suspend.`)
+
+    // 4. Send Pre-Cutoff Warnings
+    for (const user of warningList) {
+      if (user.phone) {
+        await sendTransactionalSMS(
+          user.phone,
+          smsTemplates.preCutoffWarning({ amount: user.monthly_bill || 0 })
+        )
+      }
     }
 
-    console.log(`[Cron] Found ${dropList.length} users to suspend. Processing...`)
+    if (dropList.length === 0) {
+      return NextResponse.json({ 
+        message: 'No users due for suspension today.',
+        warnings_sent: warningList.length 
+      })
+    }
 
     // 4. Execute Router Disconnections (Sequential to avoid MikroTik API congestion)
     let mikrotikApi
@@ -91,6 +119,21 @@ export async function POST(request: Request) {
 
           if (updateError) throw updateError
           
+          await logSystemEvent({
+            action_type: 'AUTO_SUSPEND',
+            target_user: user.pppoe_username,
+            description: 'Automated suspension due to grace period expiration',
+            triggered_by: 'System'
+          })
+
+          // Send hard cutoff SMS
+          if (user.phone) {
+            await sendTransactionalSMS(
+              user.phone,
+              smsTemplates.serviceSuspended()
+            )
+          }
+
           results.success.push(user.pppoe_username)
           console.log(`[Cron] Successfully suspended ${user.full_name} (${user.pppoe_username}).`)
         } catch (err: any) {

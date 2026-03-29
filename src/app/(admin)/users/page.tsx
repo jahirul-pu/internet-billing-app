@@ -127,6 +127,11 @@ export default function UsersPage() {
   const [search, setSearch] = useState("")
   const [total, setTotal] = useState(0)
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   const limit = 50
   
   // Form State
@@ -1104,33 +1109,39 @@ export default function UsersPage() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 1 || isLoading}
-                onClick={() => {
-                  const newPage = page - 1
-                  setPage(newPage)
-                  loadData(newPage)
-                }}
-              >
-                Previous
-              </Button>
-              <div className="text-xs font-medium px-2 py-1 rounded bg-muted/50 border">
-                Page {page} of {Math.max(1, Math.ceil(total / limit))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= Math.ceil(total / limit) || isLoading}
-                onClick={() => {
-                  const newPage = page + 1
-                  setPage(newPage)
-                  loadData(newPage)
-                }}
-              >
-                Next
-              </Button>
+              {mounted ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 1 || isLoading}
+                    onClick={() => {
+                      const newPage = page - 1
+                      setPage(newPage)
+                      loadData(newPage)
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  <div className="text-xs font-medium px-2 py-1 rounded bg-muted/50 border">
+                    Page {page} of {Math.max(1, Math.ceil(total / limit))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= Math.max(1, Math.ceil(total / limit)) || isLoading}
+                    onClick={() => {
+                      const newPage = page + 1
+                      setPage(newPage)
+                      loadData(newPage)
+                    }}
+                  >
+                    Next
+                  </Button>
+                </>
+              ) : (
+                <div className="h-9 w-40 bg-muted/20 animate-pulse rounded" />
+              )}
             </div>
           </div>
         </CardHeader>
@@ -1411,22 +1422,24 @@ export default function UsersPage() {
                    </div>
 
                    {/* Session Cumulative Traffic */}
-                   <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                      <div className="flex flex-col gap-1 p-3 border rounded-lg bg-violet-500/5">
                         <div className="flex items-center gap-2 text-violet-600">
                           <ArrowDown className="h-3 w-3" />
-                          <span className="text-[10px] font-bold uppercase">Traffic In</span>
+                          <span className="text-[10px] font-bold uppercase tracking-tight">Session Download</span>
                         </div>
                         <p className="text-lg font-bold tracking-tight">{currentTraffic.traffic_in}</p>
+                        <p className="text-[9px] text-muted-foreground leading-none mt-0.5">Total Data Recv</p>
                      </div>
                      <div className="flex flex-col gap-1 p-3 border rounded-lg bg-orange-500/5">
                         <div className="flex items-center gap-2 text-orange-600">
                           <ArrowUp className="h-3 w-3" />
-                          <span className="text-[10px] font-bold uppercase">Traffic Out</span>
+                          <span className="text-[10px] font-bold uppercase tracking-tight">Session Upload</span>
                         </div>
                         <p className="text-lg font-bold tracking-tight">{currentTraffic.traffic_out}</p>
+                        <p className="text-[9px] text-muted-foreground leading-none mt-0.5">Total Data Sent</p>
                      </div>
-                   </div>
+                    </div>
 
                    {/* Live Traffic Graph */}
                    <div className="grid gap-4 pt-4">

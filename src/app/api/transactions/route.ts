@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/db'
 import { connectMikrotik } from '@/lib/mikrotik'
+import { logSystemEvent } from '@/lib/logger'
+import { sendTransactionalSMS, smsTemplates } from '@/lib/sms'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,7 +45,7 @@ export async function POST(request: Request) {
     // ── Step 1: Fetch customer's current state BEFORE doing anything ──
     const { data: customer, error: fetchError } = await supabaseAdmin
       .from('customers')
-      .select('expiry_date, status, pppoe_username, package_id')
+      .select('expiry_date, status, pppoe_username, package_id, full_name, phone')
       .eq('id', customer_id)
       .single()
 
@@ -149,6 +151,28 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: updateError.message }, { status: 500 })
       }
 
+      // Log Reactivation Event
+      await logSystemEvent({
+        action_type: 'REACTIVATION',
+        target_user: customer.pppoe_username,
+        description: 'Access restored following payment confirmation',
+        triggered_by: 'Admin'
+      })
+
+      // Send payment receipt SMS
+      await sendTransactionalSMS(
+        customer.phone, 
+        smsTemplates.paymentReceipt({ name: customer.full_name, amount })
+      )
+
+      // Send reactivation welcome back SMS
+      if (customer.status === 'suspended') {
+        await sendTransactionalSMS(
+          customer.phone,
+          smsTemplates.serviceReactivated()
+        )
+      }
+
       return NextResponse.json({
         message: routerWarning || 'Payment recorded and customer reactivated successfully.',
         transaction,
@@ -156,6 +180,12 @@ export async function POST(request: Request) {
         router_warning: routerWarning
       }, { status: 200 })
     }
+
+    // Send payment receipt SMS (for non-billing/connection types or active users who just paid)
+    await sendTransactionalSMS(
+      customer.phone, 
+      smsTemplates.paymentReceipt({ name: customer.full_name, amount })
+    )
 
     return NextResponse.json({
       message: 'Transaction recorded. No expiry changes applied.',

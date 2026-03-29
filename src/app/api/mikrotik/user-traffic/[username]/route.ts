@@ -37,6 +37,9 @@ export async function GET(
     const exactInterfaceName = iface.name
     
     // Extract cumulative bytes
+    // 💡 IMPORTANT: On a PPPoE/Subscriber interface:
+    // RX (Receiving from user) = User UPLOAD
+    // TX (Transmitting to user) = User DOWNLOAD
     let bytesIn = Number(iface['rx-byte'] || 0)
     let bytesOut = Number(iface['tx-byte'] || 0)
     let trafficIn = '0 B'
@@ -67,10 +70,10 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      download: parseFloat(rxMbps.toFixed(2)),
-      upload: parseFloat(txMbps.toFixed(2)),
-      traffic_in: trafficIn,
-      traffic_out: trafficOut,
+      download: parseFloat(txMbps.toFixed(2)), // Router TX -> User RX (Download)
+      upload: parseFloat(rxMbps.toFixed(2)),   // Router RX -> User TX (Upload)
+      traffic_in: formatBytes(bytesOut),       // Maps to Download
+      traffic_out: formatBytes(bytesIn),       // Maps to Upload
       bytes_in: bytesIn,
       bytes_out: bytesOut,
       debug_interface: "resolved",

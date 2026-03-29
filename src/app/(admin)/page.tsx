@@ -120,7 +120,7 @@ export default function DashboardPage() {
   const [topConsumers, setTopConsumers] = useState<any[]>([])
   const [consumersLoading, setConsumersLoading] = useState(true)
   const [consumersTimeout, setConsumersTimeout] = useState(false)
-  const [revenue, setRevenue] = useState({ expected: 0, collected: 0, collected_field: 0, collected_office: 0, outstanding: 0 })
+  const [revenue, setRevenue] = useState({ expected: 0, collected: 0, collected_field: 0, collected_office: 0, collected_today: 0, outstanding: 0 })
   const [errorCount, setErrorCount] = useState(0)
 
   // VLAN uplink state
@@ -335,7 +335,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Revenue Snapshot Row */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
          <Card className="shadow-none border border-blue-200 bg-blue-50/10">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Expected Collection</CardTitle>
@@ -362,7 +362,22 @@ export default function DashboardPage() {
                <div className="text-3xl font-bold text-emerald-600">৳ {revenue.collected.toLocaleString()}</div>
                <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 
-                  (Field: ৳ {revenue.collected_field?.toLocaleString() || 0} | Office: ৳ {revenue.collected_office?.toLocaleString() || 0})
+                  (F: ৳ {revenue.collected_field?.toLocaleString() || 0} | O: ৳ {revenue.collected_office?.toLocaleString() || 0})
+               </p>
+            </CardContent>
+         </Card>
+
+         <Card className="shadow-none border border-violet-200 bg-violet-50/10">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-violet-600">Today's Collection</CardTitle>
+               <div className="h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
+                  <Zap className="h-4 w-4 text-violet-600" />
+               </div>
+            </CardHeader>
+            <CardContent>
+               <div className="text-3xl font-bold text-violet-600">৳ {revenue.collected_today?.toLocaleString() || 0}</div>
+               <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
+                  <Activity className="h-3.3 w-3.3 text-violet-500" /> Real-time daily earnings
                </p>
             </CardContent>
          </Card>

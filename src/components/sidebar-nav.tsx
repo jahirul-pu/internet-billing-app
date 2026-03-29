@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Users, CreditCard, Settings, Package, LifeBuoy, MessageSquareText, Network, Archive, Receipt, Truck, Ticket, Activity, Gift, Building2, Globe, LineChart, ContactRound, HandCoins } from "lucide-react"
+import { LayoutDashboard, Users, CreditCard, Settings, Package, LifeBuoy, MessageSquareText, Network, Archive, Receipt, Truck, Ticket, Activity, Gift, Building2, Globe, LineChart, ContactRound, HandCoins, TerminalSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navGroups = [
@@ -56,7 +56,7 @@ const navGroups = [
   {
     title: "SYSTEM",
     items: [
-      { name: "Settings", href: "/settings", icon: Settings },
+      { name: "System Logs", href: "/logs", icon: TerminalSquare },
     ]
   }
 ]
@@ -68,14 +68,14 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const isDashboardActive = pathname === "/"
 
   return (
-    <nav className="flex flex-col gap-8 py-6">
+    <nav className="flex flex-col gap-5 py-4">
       {/* Dashboard Item */}
       <div className="flex flex-col gap-0.5">
         <Link
           href="/"
           onClick={onNavigate}
           className={cn(
-            "group flex items-center gap-3 px-5 py-2 text-sm font-medium transition-all relative border-l-[3px]",
+            "group flex items-center gap-3 px-4 py-[6px] text-[13px] font-medium transition-all relative border-l-[3px]",
             isDashboardActive 
               ? "border-indigo-500 bg-indigo-500/10 text-white" 
               : "border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
@@ -93,7 +93,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
       {navGroups.map((group) => (
         <div key={group.title} className="flex flex-col gap-0.5">
-          <h3 className="px-5 text-[10px] font-semibold tracking-[0.15em] text-slate-400/50 uppercase mb-2">
+          <h3 className="px-4 text-[10px] font-semibold tracking-[0.15em] text-slate-400/50 uppercase mb-1">
             {group.title}
           </h3>
           {group.items.map((item) => {
@@ -104,7 +104,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 href={item.href}
                 onClick={onNavigate}
                 className={cn(
-                  "group flex items-center gap-3 px-5 py-2 text-sm font-medium transition-all relative border-l-[3px]",
+                  "group flex items-center gap-3 px-4 py-[6px] text-[13px] font-medium transition-all relative border-l-[3px]",
                   isActive 
                     ? "border-indigo-500 bg-indigo-500/10 text-white" 
                     : "border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
