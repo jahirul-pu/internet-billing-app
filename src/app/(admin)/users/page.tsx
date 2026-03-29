@@ -1215,21 +1215,35 @@ export default function UsersPage() {
                         {user.status === "active" ? (
                           <Badge
                             variant="outline"
-                            className="bg-indigo-500/10 text-indigo-600 border-indigo-200 shadow-none capitalize"
+                            className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 shadow-none capitalize"
                           >
                             Active
                           </Badge>
-                        ) : user.status === "deactivated" ? (
+                        ) : user.status === "expired" ? (
                           <Badge
-                            variant="destructive"
-                            className="shadow-none capitalize"
+                            variant="outline"
+                            className="bg-red-500/10 text-red-600 border-red-500/20 shadow-none capitalize"
                           >
-                            Deactivated
+                            Expired
+                          </Badge>
+                        ) : user.status === "pending" ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20 shadow-none capitalize"
+                          >
+                            Pending
+                          </Badge>
+                        ) : user.status === "suspended" ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-orange-500/10 text-orange-600 border-orange-500/20 shadow-none capitalize"
+                          >
+                            Suspended
                           </Badge>
                         ) : (
                           <Badge
                             variant="outline"
-                            className="bg-red-500/10 text-red-600 border-red-200 shadow-none capitalize"
+                            className="bg-slate-500/10 text-slate-600 border-slate-500/20 shadow-none capitalize"
                           >
                             {user.status || 'Unknown'}
                           </Badge>
