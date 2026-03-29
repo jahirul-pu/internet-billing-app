@@ -205,12 +205,14 @@ export default function UsersPage() {
     setSheetOpen(true)
   }
 
-  // Deep Link Edit Mode logic
+  // Deep Link Edit & Add Mode logic
   useEffect(() => {
-    const handleEditQuery = async () => {
+    const handleLocationQuery = async () => {
       if (typeof window === "undefined") return
       const urlParams = new URLSearchParams(window.location.search)
       const editId = urlParams.get("edit")
+      const action = urlParams.get("action")
+      
       if (editId) {
         try {
           const res = await fetch(`/api/customers/${editId}`)
@@ -224,9 +226,13 @@ export default function UsersPage() {
         }
         // Clean URL after opening modal
         window.history.replaceState(null, "", window.location.pathname)
+      } else if (action === "new") {
+        openAddModal()
+        // Clean URL after opening modal
+        window.history.replaceState(null, "", window.location.pathname)
       }
     }
-    handleEditQuery()
+    handleLocationQuery()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
