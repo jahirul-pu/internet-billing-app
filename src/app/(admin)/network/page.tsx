@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   Server,
   Network as NetworkIcon,
@@ -15,7 +15,11 @@ import {
   CheckCircle2,
   Loader2,
   AlertTriangle,
-  MessageSquare
+  MessageSquare,
+  ArrowDown,
+  ArrowUp,
+  Zap,
+  TrendingUp
 } from "lucide-react"
 import {
   Accordion,
@@ -43,6 +47,29 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts"
+
+/* ──────────────────────────────────────────────────────────── */
+/*  VLAN CONFIG — mirrors src/lib/vlan-config.ts for client    */
+/* ──────────────────────────────────────────────────────────── */
+const VLANS = [
+  { name: 'IIG',      color: '#6366f1' },
+  { name: 'BDIX',     color: '#10b981' },
+  { name: 'YouTube',  color: '#f59e0b' },
+  { name: 'Facebook', color: '#3b82f6' },
+  { name: 'FTP',      color: '#ef4444' },
+]
 
 /* ── Network Data Interfaces ── */
 
@@ -82,7 +109,7 @@ interface SplitterDetails {
 interface OnuDetails {
   customer: string
   mac: string
-  rxPower: string // e.g., "-19.5"
+  rxPower: string
 }
 
 export type NetworkNode = BaseNode & {
@@ -304,7 +331,6 @@ function RenderDetails({ node }: { node: NetworkNode }) {
   if (node.type === "onu") {
     const d = node.details as OnuDetails
     const rx = parseFloat(d.rxPower)
-    // Rx ranges logically: Good is -15 to -25. Worse than -27 is Bad.
     const isBadPower = rx < -27 || rx > -8
     
     return (
@@ -342,6 +368,345 @@ const securityAlerts = [
   { id: "3", timestamp: "Yesterday, 11:30 PM", type: "MAC Spoofing Attempt", location: "10.0.0.210", severity: "High", action: "Force PPPoE Re-authentication", customerName: "Kamal Hossain", onuMac: "E0:67:B3:9F:8D:11" }
 ]
 
+
+/* ──────────────────────────────────────────────────────────── */
+/*  CORE UPLINKS — live telemetry + historical charts          */
+/* ──────────────────────────────────────────────────────────── */
+
+const MAX_CHART_POINTS = 30 // rolling window for live area charts
+
+interface VlanLiveData {
+  rx_mbps: number
+  tx_mbps: number
+}
+
+interface LiveSnapshot {
+  time: string
+  [key: string]: number | string // rx_IIG, tx_IIG, etc.
+}
+
+function CoreUplinksSection() {
+  /* === LIVE POLLING STATE === */
+  const [liveData, setLiveData] = useState<Record<string, VlanLiveData>>({})
+  const [liveHistory, setLiveHistory] = useState<Record<string, LiveSnapshot[]>>(() => {
+    const initial: Record<string, LiveSnapshot[]> = {}
+    VLANS.forEach(v => { initial[v.name] = [] })
+    return initial
+  })
+  const [liveError, setLiveError] = useState<string | null>(null)
+  const [isLiveLoading, setIsLiveLoading] = useState(true)
+
+  /* === HISTORICAL STATE === */
+  const [histPeriod, setHistPeriod] = useState<'today' | 'week' | 'month'>('today')
+  const [histData, setHistData] = useState<any[]>([])
+  const [isHistLoading, setIsHistLoading] = useState(true)
+
+  /* ── Live Polling ── */
+  const fetchLive = useCallback(async () => {
+    try {
+      const res = await fetch('/api/mikrotik/uplink-live', { cache: 'no-store' })
+      const json = await res.json()
+      if (!json.success) {
+        setLiveError(json.error || 'Unknown error')
+        return
+      }
+      setLiveError(null)
+      const vlans: Record<string, VlanLiveData> = json.vlans || {}
+      setLiveData(vlans)
+
+      const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
+      setLiveHistory(prev => {
+        const next = { ...prev }
+        VLANS.forEach(v => {
+          const point: LiveSnapshot = {
+            time: now,
+            rx: vlans[v.name]?.rx_mbps ?? 0,
+            tx: vlans[v.name]?.tx_mbps ?? 0,
+          }
+          const arr = [...(next[v.name] || []), point]
+          next[v.name] = arr.slice(-MAX_CHART_POINTS)
+        })
+        return next
+      })
+    } catch (err: any) {
+      setLiveError(err.message)
+    } finally {
+      setIsLiveLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchLive()
+    const interval = setInterval(fetchLive, 1000)
+    return () => clearInterval(interval)
+  }, [fetchLive])
+
+  /* ── Historical Data ── */
+  const fetchHistorical = useCallback(async () => {
+    setIsHistLoading(true)
+    try {
+      const res = await fetch(`/api/mikrotik/uplink-history?period=${histPeriod}`, { cache: 'no-store' })
+      const json = await res.json()
+      if (json.success) {
+        setHistData(json.data || [])
+      }
+    } catch {
+      // silently fail — chart will be empty
+    } finally {
+      setIsHistLoading(false)
+    }
+  }, [histPeriod])
+
+  useEffect(() => {
+    fetchHistorical()
+  }, [fetchHistorical])
+
+  /* ── Custom Tooltip ── */
+  const LiveTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-xl p-3 text-xs min-w-[140px]">
+        <p className="text-muted-foreground font-medium mb-1.5">{label}</p>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+              {p.dataKey === 'rx' ? 'Download' : 'Upload'}
+            </span>
+            <span className="font-mono font-semibold">{p.value.toFixed(1)} Mbps</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const HistTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div className="bg-background/95 backdrop-blur-sm border rounded-lg shadow-xl p-3 text-xs min-w-[160px]">
+        <p className="text-muted-foreground font-medium mb-1.5">{label}</p>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ background: p.fill || p.color }} />
+              {p.name}
+            </span>
+            <span className="font-mono font-semibold">{p.value.toFixed(2)} GB</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ── Section Header ── */}
+      <div className="flex items-center gap-3 mb-2">
+        <div className="p-2 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-lg border border-indigo-500/20">
+          <Zap className="h-5 w-5 text-indigo-400" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold tracking-tight">Core VLAN Uplinks — Live Telemetry</h3>
+          <p className="text-xs text-muted-foreground">Real-time bandwidth monitoring across 5 core VLANs. Polling every 2s.</p>
+        </div>
+        {liveError && (
+          <Badge variant="destructive" className="ml-auto text-xs">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            {liveError}
+          </Badge>
+        )}
+        {!liveError && !isLiveLoading && (
+          <Badge variant="outline" className="ml-auto text-xs border-emerald-500/50 text-emerald-400 bg-emerald-500/10">
+            <Activity className="h-3 w-3 mr-1 animate-pulse" />
+            Live
+          </Badge>
+        )}
+      </div>
+
+      {/* ── Live Area Charts Grid ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
+        {VLANS.map(vlan => {
+          const data = liveHistory[vlan.name] || []
+          const current = liveData[vlan.name]
+          const rx = current?.rx_mbps ?? 0
+          const tx = current?.tx_mbps ?? 0
+
+          return (
+            <Card key={vlan.name} className="relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm group hover:border-border transition-colors">
+              {/* Glow accent */}
+              <div
+                className="absolute top-0 left-0 right-0 h-[2px] opacity-60 group-hover:opacity-100 transition-opacity"
+                style={{ background: `linear-gradient(90deg, transparent, ${vlan.color}, transparent)` }}
+              />
+              <CardHeader className="pb-2 pt-4 px-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: vlan.color }} />
+                    {vlan.name}
+                  </CardTitle>
+                </div>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="flex items-center gap-1 text-xs">
+                    <ArrowDown className="h-3 w-3 text-emerald-400" />
+                    <span className="font-mono font-bold text-emerald-400">{rx.toFixed(1)}</span>
+                    <span className="text-muted-foreground">Mbps</span>
+                  </span>
+                  <span className="flex items-center gap-1 text-xs">
+                    <ArrowUp className="h-3 w-3 text-blue-400" />
+                    <span className="font-mono font-bold text-blue-400">{tx.toFixed(1)}</span>
+                    <span className="text-muted-foreground">Mbps</span>
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="px-2 pb-2 pt-0">
+                <div className="h-[100px]">
+                  {isLiveLoading && data.length === 0 ? (
+                    <div className="h-full flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id={`grad-rx-${vlan.name}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id={`grad-tx-${vlan.name}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="time" hide />
+                        <YAxis tick={{ fontSize: 9 }} tickLine={false} axisLine={false} />
+                        <Tooltip content={<LiveTooltip />} />
+                        <Area
+                          type="monotone"
+                          dataKey="rx"
+                          stroke="#10b981"
+                          strokeWidth={1.5}
+                          fill={`url(#grad-rx-${vlan.name})`}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                        <Area
+                          type="monotone"
+                          dataKey="tx"
+                          stroke="#3b82f6"
+                          strokeWidth={1.5}
+                          fill={`url(#grad-tx-${vlan.name})`}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+
+      {/* ── Historical Consumption Chart ── */}
+      <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-lg border border-amber-500/20">
+                <TrendingUp className="h-5 w-5 text-amber-400" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Historical VLAN Consumption</CardTitle>
+                <CardDescription className="text-xs">
+                  Delta-based bandwidth usage per VLAN — calculated from <code className="text-[10px] bg-muted px-1 py-0.5 rounded">vlan_logs</code> snapshots.
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex gap-1 p-1 bg-muted/50 rounded-lg border border-border/50">
+              {(['today', 'week', 'month'] as const).map(period => (
+                <Button
+                  key={period}
+                  size="sm"
+                  variant={histPeriod === period ? "default" : "ghost"}
+                  className={cn(
+                    "h-7 text-xs font-medium px-3 rounded-md",
+                    histPeriod === period && "shadow-sm"
+                  )}
+                  onClick={() => setHistPeriod(period)}
+                >
+                  {period === 'today' ? 'Today' : period === 'week' ? 'This Week' : 'This Month'}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[320px] w-full">
+            {isHistLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : histData.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <TrendingUp className="h-10 w-10 opacity-30" />
+                <p className="text-sm">No historical data yet.</p>
+                <p className="text-xs">Start the uplink logger cron to populate this chart.</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={histData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    dataKey="vlan"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `${v} GB`}
+                  />
+                  <Tooltip content={<HistTooltip />} />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  <Bar name="Download (GB)" dataKey="download_gb" radius={[4, 4, 0, 0]} maxBarSize={48}>
+                    {histData.map((entry: any, idx: number) => {
+                      const vlan = VLANS.find(v => v.name === entry.vlan)
+                      return (
+                        <rect key={idx} fill={vlan?.color || '#6366f1'} />
+                      )
+                    })}
+                  </Bar>
+                  <Bar name="Upload (GB)" dataKey="upload_gb" radius={[4, 4, 0, 0]} maxBarSize={48} opacity={0.6}>
+                    {histData.map((entry: any, idx: number) => {
+                      const vlan = VLANS.find(v => v.name === entry.vlan)
+                      return (
+                        <rect key={idx} fill={vlan?.color || '#6366f1'} />
+                      )
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+
+/* ──────────────────────────────────────────────────────────── */
+/*  MAIN PAGE COMPONENT                                        */
+/* ──────────────────────────────────────────────────────────── */
+
 export default function NetworkTopologyPage() {
   const [selectedNode, setSelectedNode] = useState<NetworkNode>(networkTree[0])
   const [mitigatingAlert, setMitigatingAlert] = useState<any>(null)
@@ -364,9 +729,6 @@ export default function NetworkTopologyPage() {
     }, 1200)
   }
 
-  // Recursive component to render tree using Accordion for nested items,
-  // preventing clicks from toggling accordion if we only want to select, 
-  // but Shadcn AccordionTrigger merges onClick. We'll capture onClick on the trigger to select.
   const renderTree = (nodes: NetworkNode[]) => {
     return (
       <Accordion className="w-full space-y-1" defaultValue={networkTree.map(n => n.id)}>
@@ -374,7 +736,6 @@ export default function NetworkTopologyPage() {
           const hasChildren = node.children && node.children.length > 0
 
           if (!hasChildren) {
-            // Leaf node (e.g. ONU)
             const isSelected = selectedNode.id === node.id
             return (
               <div
@@ -391,7 +752,6 @@ export default function NetworkTopologyPage() {
             )
           }
 
-          // Node with children
           const isSelected = selectedNode.id === node.id
           return (
             <AccordionItem value={node.id} key={node.id} className="border-none">
@@ -418,7 +778,7 @@ export default function NetworkTopologyPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 h-[calc(100vh-8rem)]">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2 shrink-0">
         <h1 className="text-2xl font-bold tracking-tight">Network Topology</h1>
         <p className="text-muted-foreground text-sm">
@@ -427,11 +787,17 @@ export default function NetworkTopologyPage() {
       </div>
       <Separator className="shrink-0" />
 
-      <Tabs defaultValue="topology" className="flex-1 flex flex-col min-h-0">
+      <Tabs defaultValue="uplinks" className="flex-1 flex flex-col min-h-0">
         <TabsList className="w-fit shrink-0 mb-4">
+          <TabsTrigger value="uplinks">Core Uplinks</TabsTrigger>
           <TabsTrigger value="topology">Topology</TabsTrigger>
           <TabsTrigger value="alerts">Security Alerts</TabsTrigger>
         </TabsList>
+
+        {/* ── NEW: Core Uplinks Tab ── */}
+        <TabsContent value="uplinks" className="flex-1 min-h-0 m-0 border-0 p-0 outline-none">
+          <CoreUplinksSection />
+        </TabsContent>
 
         <TabsContent value="topology" className="flex-1 min-h-0 m-0 border-0 p-0 outline-none">
           <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-14rem)] md:h-full">
@@ -447,7 +813,6 @@ export default function NetworkTopologyPage() {
 
         {/* ── Right Column: Device Details Panel ── */}
         <Card className="flex-1 flex flex-col h-full border-primary/20 shadow-lg relative overflow-hidden">
-          {/* Subtle background icon for flavor depending on device type */}
           <div className="absolute -right-8 -bottom-8 opacity-[0.03] pointer-events-none">
              <NodeIcon type={selectedNode.type} className="w-64 h-64" />
           </div>

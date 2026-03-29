@@ -42,6 +42,7 @@ export async function PATCH(
     if (body.roles !== undefined) allowedFields.roles = body.roles
     if (body.zone !== undefined) allowedFields.zone = body.zone
     if (body.status !== undefined) allowedFields.status = body.status
+    if (body.assigned_areas !== undefined) allowedFields.assigned_areas = body.assigned_areas
     allowedFields.updated_at = new Date().toISOString()
 
     const { data, error } = await supabaseAdmin

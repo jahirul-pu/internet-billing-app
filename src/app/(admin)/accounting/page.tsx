@@ -60,6 +60,9 @@ import {
 } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { useEffect, useCallback } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "sonner"
 
 /* ── Mock Data ── */
 
@@ -76,9 +79,31 @@ const mockExpenses: ExpenseItem[] = []
 export default function AccountingPage() {
   const [expenseOpen, setExpenseOpen] = useState(false)
   const [date, setDate] = useState<Date>()
+  const [loading, setLoading] = useState(true)
+  const [revenue, setRevenue] = useState(0)
+
+  const fetchFinancials = useCallback(async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/analytics/revenue')
+      const data = await res.json()
+      if (data.success) {
+        setRevenue(data.summary.collected)
+      }
+    } catch (err) {
+      console.error("Failed to fetch accounting data:", err)
+      toast.error("Could not sync revenue data")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchFinancials()
+  }, [fetchFinancials])
 
   // Calculations for KPI Cards
-  const totalRevenue = 0 // Mock revenue
+  const totalRevenue = revenue
   const totalExpenses = mockExpenses.reduce((sum, item) => sum + item.amount, 0)
   const netProfit = totalRevenue - totalExpenses
 
@@ -183,7 +208,11 @@ export default function AccountingPage() {
             <TrendingUp className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalRevenue.toLocaleString()} ৳</div>
+            {loading ? (
+              <Skeleton className="h-8 w-32" />
+            ) : (
+              <div className="text-2xl font-bold">{totalRevenue.toLocaleString()} ৳</div>
+            )}
             <p className="text-xs text-muted-foreground mt-1">Generated from user subscriptions</p>
           </CardContent>
         </Card>
@@ -212,12 +241,16 @@ export default function AccountingPage() {
             <Wallet className={cn("h-4 w-4", netProfit >= 0 ? "text-emerald-600" : "text-destructive")} />
           </CardHeader>
           <CardContent>
-            <div className={cn(
-              "text-3xl font-black",
-              netProfit >= 0 ? "text-emerald-600" : "text-destructive"
-            )}>
-              {netProfit >= 0 ? "+" : ""}{netProfit.toLocaleString()} ৳
-            </div>
+            {loading ? (
+              <Skeleton className="h-10 w-40" />
+            ) : (
+              <div className={cn(
+                "text-3xl font-black",
+                netProfit >= 0 ? "text-emerald-600" : "text-destructive"
+              )}>
+                {netProfit >= 0 ? "+" : ""}{netProfit.toLocaleString()} ৳
+              </div>
+            )}
             <p className={cn("text-xs font-medium mt-1", netProfit >= 0 ? "text-emerald-700/80" : "text-destructive/80")}>
               Revenue minus calculated expenses
             </p>

@@ -18,11 +18,26 @@ export async function GET() {
     // 1. Calculate Collected This Month
     const { data: payments, error: paymentError } = await supabaseAdmin
       .from('payments')
-      .select('amount')
+      .select('amount, collected_by')
       .gte('created_at', startOfMonth.toISOString())
 
     if (paymentError) throw paymentError
-    const collected = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0)
+    
+    let collected = 0
+    let collected_office = 0
+    let collected_field = 0
+
+    payments.forEach(p => {
+      const amt = parseFloat(p.amount) || 0
+      collected += amt
+      
+      const collector = (p.collected_by || 'Office').trim()
+      if (collector.toLowerCase() === 'office') {
+        collected_office += amt
+      } else {
+        collected_field += amt
+      }
+    })
 
     // 2. Calculate Outstanding Balance
     // Outstanding users: currentDay >= billing_day AND (last_payment_date is null OR not in current month)
@@ -52,6 +67,8 @@ export async function GET() {
       success: true,
       summary: {
         collected: parseFloat(collected.toFixed(2)),
+        collected_office: parseFloat(collected_office.toFixed(2)),
+        collected_field: parseFloat(collected_field.toFixed(2)),
         outstanding: parseFloat(outstanding.toFixed(2)),
         currency: 'BDT'
       }

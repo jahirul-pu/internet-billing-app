@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { 
   MoreHorizontal, UserPlus, FileWarning, RefreshCcw, Search, ArrowDown, ArrowUp, 
-  DollarSign, Wallet2, CheckCircle2, History, Filter, X 
+  DollarSign, Wallet2, CheckCircle2, History, Filter, X, MapPin, Shield, Wifi, CreditCard, User, Pencil, Eye, EyeOff 
 } from "lucide-react"
 import {
   Dialog,
@@ -67,6 +67,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -82,6 +83,7 @@ import {
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
+
 export default function UsersPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [customers, setCustomers] = useState<any[]>([])
@@ -93,6 +95,9 @@ export default function UsersPage() {
   // Filtering & Data State
   const [zones, setZones] = useState<any[]>([])
   const [staff, setStaff] = useState<any[]>([])
+  // CRM dynamic areas & staff for the Add User form
+  const [crmAreas, setCrmAreas] = useState<string[]>([])
+  const [crmStaff, setCrmStaff] = useState<any[]>([])
   const [filters, setFilters] = useState({
     plan: "all",
     status: "all",
@@ -128,12 +133,102 @@ export default function UsersPage() {
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
+    nid_number: "",
     address: "",
+    area: "",
+    collector: "",
+    monthly_bill: "",
+    discount: "0",
+    billing_start_date: new Date().toISOString().split('T')[0],
+    grace_period_days: "3",
     pppoe_username: "",
     pppoe_password: "",
     ip_address: "",
     package_id: ""
   })
+
+  // Derived: filtered collectors based on selected area (from CRM staff data)
+  const filteredCollectors = useMemo(() => {
+    if (!formData.area) return []
+    return crmStaff.filter(s => 
+      Array.isArray(s.assigned_areas) && s.assigned_areas.includes(formData.area)
+    )
+  }, [formData.area, crmStaff])
+
+  const [editMode, setEditMode] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+
+  const openAddModal = () => {
+    setEditMode(false)
+    setEditingUserId(null)
+    setFormData({
+      full_name: "",
+      phone: "",
+      nid_number: "",
+      address: "",
+      area: "",
+      collector: "",
+      monthly_bill: "",
+      discount: "0",
+      billing_start_date: new Date().toISOString().split('T')[0],
+      grace_period_days: "3",
+      pppoe_username: "",
+      pppoe_password: "",
+      ip_address: "",
+      package_id: ""
+    })
+    setShowPassword(false)
+    setSheetOpen(true)
+  }
+
+  const openEditModal = (user: any) => {
+    setEditMode(true)
+    setEditingUserId(user.id)
+    setFormData({
+      full_name: user.full_name || "",
+      phone: user.phone || "",
+      nid_number: user.nid_number || "",
+      address: user.address || "",
+      area: user.area || "",
+      collector: user.collector || "",
+      monthly_bill: user.monthly_bill ? String(user.monthly_bill) : "",
+      discount: user.discount ? String(user.discount) : "0",
+      billing_start_date: user.billing_start_date ? new Date(user.billing_start_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      grace_period_days: user.grace_period_days !== undefined ? String(user.grace_period_days) : "3",
+      pppoe_username: user.pppoe_username || "",
+      pppoe_password: user.pppoe_password || "",
+      ip_address: user.ip_address || "",
+      package_id: user.package_id || ""
+    })
+    setShowPassword(false)
+    setSheetOpen(true)
+  }
+
+  // Deep Link Edit Mode logic
+  useEffect(() => {
+    const handleEditQuery = async () => {
+      if (typeof window === "undefined") return
+      const urlParams = new URLSearchParams(window.location.search)
+      const editId = urlParams.get("edit")
+      if (editId) {
+        try {
+          const res = await fetch(`/api/customers/${editId}`)
+          if (res.ok) {
+            const user = await res.json()
+            // Wait slightly for packages to be populated if needed, but the form has fail-safes.
+            openEditModal(user)
+          }
+        } catch (e) {
+            console.error("Deep link edit failed", e)
+        }
+        // Clean URL after opening modal
+        window.history.replaceState(null, "", window.location.pathname)
+      }
+    }
+    handleEditQuery()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // IP Auto-assignment State
   const [availableIps, setAvailableIps] = useState<string[]>([])
@@ -188,12 +283,13 @@ export default function UsersPage() {
         // billing_status and collector will be handled by the API if possible, or filtered on client
       })
 
-      const [custRes, pkgRes, liveRes, zoneRes, staffRes] = await Promise.all([
+      const [custRes, pkgRes, liveRes, zoneRes, staffRes, crmRes] = await Promise.all([
         fetch(`/api/customers?${params.toString()}`),
         fetch('/api/packages'),
         fetch('/api/mikrotik/live-sessions'),
-        fetch('/api/zones'), // Need a route for zones if it doesn't exist, will check
-        fetch('/api/staff')
+        fetch('/api/zones'),
+        fetch('/api/staff'),
+        fetch('/api/crm/get-areas-staff'),
       ])
       
       const custData = await custRes.json()
@@ -201,6 +297,7 @@ export default function UsersPage() {
       const liveData = await liveRes.json()
       const zoneData = zoneRes.ok ? await zoneRes.json() : []
       const staffData = staffRes.ok ? await staffRes.json() : { data: [] }
+      const crmData = crmRes.ok ? await crmRes.json() : { areas: [], staff: [] }
 
       if (custRes.ok) {
         setCustomers(custData.data || [])
@@ -212,6 +309,9 @@ export default function UsersPage() {
       }
       if (zoneRes.ok) setZones(zoneData)
       if (staffRes.ok) setStaff(staffData.data || [])
+      // CRM dynamic data for form dropdowns
+      setCrmAreas(crmData.areas || [])
+      setCrmStaff(crmData.staff || [])
 
     } catch (e) {
       console.error("Failed loading data", e)
@@ -273,10 +373,10 @@ export default function UsersPage() {
     }
   }
 
-  const handleRecordPayment = async (amount: number, method: string) => {
+  const handleRecordPayment = async (amount: number, method: string, collectedBy: string) => {
     if (!selectedForPayment) return
     setIsRecordingPayment(true)
-    console.log('[DEBUG] Recording Payment:', { customer_id: selectedForPayment.id, amount, method })
+    console.log('[DEBUG] Recording Payment:', { customer_id: selectedForPayment.id, amount, method, collected_by: collectedBy })
     
     try {
       const res = await fetch("/api/payments", {
@@ -285,7 +385,8 @@ export default function UsersPage() {
         body: JSON.stringify({
           customer_id: selectedForPayment.id,
           amount: parseFloat(amount?.toString() || "0"),
-          payment_method: method
+          payment_method: method,
+          collected_by: collectedBy
         })
       })
       
@@ -392,14 +493,29 @@ export default function UsersPage() {
       const defaultExpiry = new Date()
       defaultExpiry.setDate(defaultExpiry.getDate() + 30)
 
-      const payload = {
+      // Calculate billing_day from billing_start_date
+      const billingDay = formData.billing_start_date
+        ? new Date(formData.billing_start_date).getDate()
+        : 1
+
+      const method = editMode ? 'PATCH' : 'POST'
+      const url = editMode ? `/api/customers/${editingUserId}` : '/api/customers'
+
+      const payload: any = {
         ...formData,
-        status: "active",
-        expiry_date: defaultExpiry.toISOString()
+        monthly_bill: parseFloat(formData.monthly_bill || '0'),
+        discount: parseFloat(formData.discount || '0'),
+        grace_period_days: parseInt(formData.grace_period_days || '3'),
+        billing_day: billingDay,
+      }
+      
+      if (!editMode) {
+        payload.status = "active"
+        payload.expiry_date = defaultExpiry.toISOString()
       }
 
-      const response = await fetch('/api/customers', {
-        method: 'POST',
+      const response = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       })
@@ -407,11 +523,11 @@ export default function UsersPage() {
       const responseData = await response.json()
 
       if (!response.ok) {
-        toast.error(responseData.error || "Failed to create customer")
+        toast.error(responseData.error || (editMode ? "Failed to update customer" : "Failed to create customer"))
         return
       }
 
-      toast.success('Customer provisioned successfully.')
+      toast.success(editMode ? 'Customer updated successfully.' : 'Customer provisioned successfully.')
       setSheetOpen(false)
       loadData(1)
       setPage(1)
@@ -419,7 +535,14 @@ export default function UsersPage() {
       setFormData({
         full_name: "",
         phone: "",
+        nid_number: "",
         address: "",
+        area: "",
+        collector: "",
+        monthly_bill: "",
+        discount: "0",
+        billing_start_date: new Date().toISOString().split('T')[0],
+        grace_period_days: "3",
         pppoe_username: "",
         pppoe_password: "",
         ip_address: "",
@@ -538,7 +661,11 @@ export default function UsersPage() {
                     <Label className="text-xs">Coverage Area</Label>
                     <Select value={filters.area} onValueChange={(v) => setFilters(f => ({ ...f, area: v || "all" }))}>
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="All Areas" />
+                        <SelectValue placeholder="All Areas">
+                          {filters.area && filters.area !== "all" 
+                            ? zones.find(z => z.id === filters.area)?.name 
+                            : "All Areas"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Areas</SelectItem>
@@ -554,7 +681,11 @@ export default function UsersPage() {
                   <Label className="text-xs">Collector (Staff)</Label>
                   <Select value={filters.collector} onValueChange={(v) => setFilters(f => ({ ...f, collector: v || "all" }))}>
                     <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="All Collectors" />
+                      <SelectValue placeholder="All Collectors">
+                        {filters.collector && filters.collector !== "all" 
+                          ? staff.find(s => s.id === filters.collector)?.name 
+                          : "All Collectors"}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Staff</SelectItem>
@@ -579,158 +710,381 @@ export default function UsersPage() {
             {isSyncing ? "Syncing..." : "Sync from Router"}
           </Button>
 
-          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetTrigger render={<Button size="sm" className="h-9" />}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Add New User
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>New Customer Registration</SheetTitle>
-                <SheetDescription>
-                  Fill in the details below to register a new subscriber.
-                </SheetDescription>
-              </SheetHeader>
+          <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+            <DialogTrigger render={<Button size="sm" className="h-9" onClick={openAddModal} />}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add New User
+            </DialogTrigger>
+            <DialogContent className="w-screen h-[100dvh] max-w-none sm:max-w-none m-0 rounded-none border-0 overflow-y-auto">
+              <DialogHeader className="px-6 pt-6 pb-2">
+                <DialogTitle className="text-xl flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <UserPlus className="h-4 w-4 text-primary" />
+                  </div>
+                  {editMode ? "Edit Customer Details" : "New Customer Registration"}
+                </DialogTitle>
+                <DialogDescription>
+                  {editMode ? "Update the customer's CRM and network profiling details." : "Complete the CRM intake form below. All sections must be filled to provision a new subscriber."}
+                </DialogDescription>
+              </DialogHeader>
 
-              <form onSubmit={handleSubmit} className="flex flex-col gap-6 px-4 pb-4 mt-6">
-                <div className="flex flex-col gap-1">
-                  <h3 className="text-sm font-semibold tracking-tight">Personal Details</h3>
-                </div>
-                <Separator />
-                <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    <Input 
-                      id="fullName" 
-                      placeholder="e.g. Rahim Uddin" 
-                      required 
-                      value={formData.full_name}
-                      onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="phone">Phone Number</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="e.g. 01712-345678"
-                      required
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="address">Full Address</Label>
-                    <Input
-                      id="address"
-                      placeholder="House, Road, Area, City"
-                      required
-                      value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1 pt-2">
-                  <h3 className="text-sm font-semibold tracking-tight">Network Details</h3>
-                </div>
-                <Separator />
-                <div className="grid gap-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="pppoeUser">PPPoE Username</Label>
-                      <Input 
-                        id="pppoeUser" 
-                        placeholder="e.g. rahim_uddin" 
-                        required
-                        value={formData.pppoe_username}
-                        onChange={(e) => setFormData({ ...formData, pppoe_username: e.target.value })}
-                      />
+              <form onSubmit={handleSubmit} className="px-6 pb-6 mt-4">
+                <div className="grid md:grid-cols-2 gap-5">
+                {/* ── Section 1: Identity ── */}
+                <Card className="border-l-4 border-l-blue-500 shadow-sm">
+                  <CardHeader className="pb-3 pt-4 px-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-md bg-blue-500/10 flex items-center justify-center">
+                        <User className="h-3.5 w-3.5 text-blue-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm">Identity</CardTitle>
+                        <CardDescription className="text-[11px]">Customer personal information</CardDescription>
+                      </div>
                     </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="pppoePwd">PPPoE Password</Label>
-                      <Input
-                        id="pppoePwd"
-                        type="password"
-                        placeholder="••••••••"
-                        required
-                        value={formData.pppoe_password}
-                        onChange={(e) => setFormData({ ...formData, pppoe_password: e.target.value })}
-                      />
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="grid gap-3">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="fullName" className="text-xs">Full Name</Label>
+                        <Input 
+                          id="fullName" 
+                          placeholder="e.g. Rahim Uddin" 
+                          required 
+                          className="h-9"
+                          value={formData.full_name}
+                          onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="phone" className="text-xs">Phone Number</Label>
+                          <Input
+                            id="phone"
+                            type="tel"
+                            placeholder="01712-345678"
+                            required
+                            className="h-9"
+                            value={formData.phone}
+                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="nid" className="text-xs">NID Number</Label>
+                          <Input
+                            id="nid"
+                            placeholder="National ID"
+                            className="h-9"
+                            value={formData.nid_number}
+                            onChange={(e) => setFormData({ ...formData, nid_number: e.target.value })}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Internet Package</Label>
-                    <Select 
-                      required 
-                      value={formData.package_id} 
-                      onValueChange={(val: any) => setFormData({ ...formData, package_id: val, ip_address: "" })}
-                    >
-                      <SelectTrigger className="w-full h-10">
-                        <SelectValue placeholder="Select a package">
-                          {formData.package_id ? (
-                            packages.find(p => p.id === formData.package_id)?.name || "Select a package"
-                          ) : null}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {packages.length === 0 ? (
-                          <div className="p-2 text-sm text-muted-foreground flex items-center">
-                            <FileWarning className="w-4 h-4 mr-2"/> No packages currently loaded in database
-                          </div>
-                        ) : (
-                          packages.map((pkg) => (
-                            <SelectItem key={pkg.id} value={pkg.id}>
-                              {pkg.name} — {pkg.price} ৳
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>
-                      IP Address <span className="text-muted-foreground font-normal">(auto-assign or select static)</span>
-                    </Label>
-                    <Select 
-                      value={formData.ip_address || "auto"} 
-                      onValueChange={(val: any) => setFormData({ ...formData, ip_address: val === 'auto' ? '' : val })}
-                      disabled={!formData.package_id || isLoadingIps}
-                    >
-                      <SelectTrigger className="w-full h-10 flex-1">
-                        {isLoadingIps ? (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <RefreshCcw className="h-4 w-4 animate-spin" />
-                            <span>Calculating available IPs...</span>
-                          </div>
-                        ) : (
-                          <SelectValue placeholder="Dynamic Auto-Assign">
-                            {formData.ip_address ? formData.ip_address : "Dynamic Auto-Assign"}
-                          </SelectValue>
-                        )}
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">Dynamic Auto-Assign (DHCP/Pool)</SelectItem>
-                        {availableIps.length > 0 && availableIps.map(ip => (
-                          <SelectItem key={ip} value={ip}>{ip}</SelectItem>
-                        ))}
-                        {availableIps.length === 0 && formData.package_id && !isLoadingIps && (
-                          <div className="p-2 text-sm text-muted-foreground flex items-center">
-                            <FileWarning className="w-4 h-4 mr-2"/> No static IPs available in pool
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
 
-                <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
-                  {isSubmitting ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  {isSubmitting ? "Provisioning Link..." : "Create Account"}
-                </Button>
+                {/* ── Section 2: Location & Field ── */}
+                <Card className="border-l-4 border-l-emerald-500 shadow-sm">
+                  <CardHeader className="pb-3 pt-4 px-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-md bg-emerald-500/10 flex items-center justify-center">
+                        <MapPin className="h-3.5 w-3.5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm">Location & Field</CardTitle>
+                        <CardDescription className="text-[11px]">Address, area assignment & collector</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="grid gap-3">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="address" className="text-xs">Full Address</Label>
+                        <Textarea
+                          id="address"
+                          placeholder="House #, Road #, Village/Area, Post Office, Upazila, District"
+                          required
+                          className="min-h-[64px]"
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs">Area</Label>
+                          <Select 
+                            value={formData.area} 
+                            onValueChange={(val) => val && setFormData({ ...formData, area: val, collector: "" })}
+                          >
+                            <SelectTrigger className="h-9 text-xs">
+                              <SelectValue placeholder="Select area">
+                                {formData.area || undefined}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {crmAreas.length === 0 ? (
+                                <div className="p-2 text-xs text-muted-foreground">No areas configured. Add areas in Staff Directory first.</div>
+                              ) : (
+                                crmAreas.map((area: string) => (
+                                  <SelectItem key={area} value={area}>{area}</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs">Collector</Label>
+                          <Select 
+                            value={formData.collector} 
+                            onValueChange={(val) => val && setFormData({ ...formData, collector: val })}
+                            disabled={!formData.area}
+                          >
+                            <SelectTrigger className={cn("h-9 text-xs", !formData.area && "opacity-50")}>
+                              <SelectValue placeholder={formData.area ? "Select collector" : "Select area first"}>
+                                {formData.collector || undefined}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredCollectors.length === 0 ? (
+                                <div className="p-2 text-xs text-muted-foreground">No collectors for this area</div>
+                              ) : (
+                                filteredCollectors.map((s: any) => (
+                                  <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* ── Section 3: Billing Settings ── */}
+                <Card className="border-l-4 border-l-amber-500 shadow-sm">
+                  <CardHeader className="pb-3 pt-4 px-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-md bg-amber-500/10 flex items-center justify-center">
+                        <CreditCard className="h-3.5 w-3.5 text-amber-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm">Billing Settings</CardTitle>
+                        <CardDescription className="text-[11px]">Monthly fee, discount & billing cycle</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="grid gap-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="monthlyBill" className="text-xs">
+                            Monthly Bill (৳)
+                            {formData.package_id && (
+                              <span className="ml-1 text-[10px] text-muted-foreground font-normal">(auto-filled)</span>
+                            )}
+                          </Label>
+                          <Input
+                            id="monthlyBill"
+                            type="number"
+                            placeholder="0"
+                            className="h-9"
+                            value={formData.monthly_bill}
+                            onChange={(e) => setFormData({ ...formData, monthly_bill: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="discount" className="text-xs">Discount (৳)</Label>
+                          <Input
+                            id="discount"
+                            type="number"
+                            placeholder="0"
+                            className="h-9"
+                            value={formData.discount}
+                            onChange={(e) => setFormData({ ...formData, discount: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="billingStart" className="text-xs">Billing Start Date</Label>
+                          <Input
+                            id="billingStart"
+                            type="date"
+                            className="h-9 text-xs"
+                            value={formData.billing_start_date}
+                            onChange={(e) => setFormData({ ...formData, billing_start_date: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="gracePeriod" className="text-xs">Grace Period (Days)</Label>
+                          <Input
+                            id="gracePeriod"
+                            type="number"
+                            placeholder="3"
+                            className="h-9"
+                            min={0}
+                            max={30}
+                            value={formData.grace_period_days}
+                            onChange={(e) => setFormData({ ...formData, grace_period_days: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      {formData.monthly_bill && formData.discount && parseFloat(formData.discount) > 0 && (
+                        <div className="flex items-center justify-between p-2.5 bg-emerald-500/5 rounded-lg border border-emerald-200/50">
+                          <span className="text-[11px] text-muted-foreground">Effective Monthly Fee</span>
+                          <span className="text-sm font-bold text-emerald-600">
+                            ৳ {Math.max(0, parseFloat(formData.monthly_bill) - parseFloat(formData.discount))}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* ── Section 4: Network ── */}
+                <Card className="border-l-4 border-l-violet-500 shadow-sm">
+                  <CardHeader className="pb-3 pt-4 px-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-md bg-violet-500/10 flex items-center justify-center">
+                        <Wifi className="h-3.5 w-3.5 text-violet-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm">Network</CardTitle>
+                        <CardDescription className="text-[11px]">PPPoE credentials, package & IP assignment</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4">
+                    <div className="grid gap-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="pppoeUser" className="text-xs">PPPoE Username</Label>
+                          <Input 
+                            id="pppoeUser" 
+                            placeholder="e.g. rahim_uddin" 
+                            required
+                            className="h-9"
+                            value={formData.pppoe_username}
+                            onChange={(e) => setFormData({ ...formData, pppoe_username: e.target.value })}
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="pppoePwd" className="text-xs">PPPoE Password</Label>
+                          <div className="relative">
+                            <Input
+                              id="pppoePwd"
+                              type={showPassword ? "text" : "password"}
+                              placeholder="••••••••"
+                              required
+                              className="h-9 pr-9"
+                              value={formData.pppoe_password}
+                              onChange={(e) => setFormData({ ...formData, pppoe_password: e.target.value })}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="absolute right-0 top-0 h-9 w-9 px-0 py-0 hover:bg-transparent"
+                              onClick={() => setShowPassword(!showPassword)}
+                            >
+                              {showPassword ? (
+                                <EyeOff className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <Eye className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <span className="sr-only">
+                                {showPassword ? "Hide password" : "Show password"}
+                              </span>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">Internet Package</Label>
+                        <Select 
+                          required 
+                          value={formData.package_id} 
+                          onValueChange={(val: any) => {
+                            const pkg = packages.find(p => p.id === val);
+                            setFormData({ 
+                              ...formData, 
+                              package_id: val, 
+                              ip_address: "",
+                              ...(pkg?.price && { monthly_bill: String(pkg.price) })
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-full h-9 text-xs">
+                            <SelectValue placeholder="Select a package">
+                              {formData.package_id ? (
+                                packages.find(p => p.id === formData.package_id)?.name || "Select a package"
+                              ) : null}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {packages.length === 0 ? (
+                              <div className="p-2 text-sm text-muted-foreground flex items-center">
+                                <FileWarning className="w-4 h-4 mr-2"/> No packages loaded
+                              </div>
+                            ) : (
+                              packages.map((pkg) => (
+                                <SelectItem key={pkg.id} value={pkg.id}>
+                                  {pkg.name} — {pkg.price} ৳
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label className="text-xs">
+                          IP Address <span className="text-muted-foreground font-normal">(auto or static)</span>
+                        </Label>
+                        <Select 
+                          value={formData.ip_address || "auto"} 
+                          onValueChange={(val: any) => setFormData({ ...formData, ip_address: val === 'auto' ? '' : val })}
+                          disabled={!formData.package_id || isLoadingIps}
+                        >
+                          <SelectTrigger className="w-full h-9 text-xs">
+                            {isLoadingIps ? (
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <RefreshCcw className="h-3.5 w-3.5 animate-spin" />
+                                <span>Scanning IP pool...</span>
+                              </div>
+                            ) : (
+                              <SelectValue placeholder="Dynamic Auto-Assign">
+                                {formData.ip_address ? formData.ip_address : "Dynamic Auto-Assign"}
+                              </SelectValue>
+                            )}
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Dynamic Auto-Assign (DHCP/Pool)</SelectItem>
+                            {availableIps.length > 0 && availableIps.map(ip => (
+                              <SelectItem key={ip} value={ip}>{ip}</SelectItem>
+                            ))}
+                            {availableIps.length === 0 && formData.package_id && !isLoadingIps && (
+                              <div className="p-2 text-xs text-muted-foreground flex items-center">
+                                <FileWarning className="w-3.5 h-3.5 mr-1.5"/> No static IPs available
+                              </div>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                </div>
+                <div className="mt-5">
+                  {/* ── Submit ── */}
+                  <Button type="submit" className="w-full h-11 text-sm font-semibold" disabled={isSubmitting}>
+                    {isSubmitting ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Shield className="mr-2 h-4 w-4" />}
+                    {isSubmitting ? (editMode ? "Saving Changes..." : "Provisioning Link...") : (editMode ? "Save Changes" : "Provision & Create Account")}
+                  </Button>
+                </div>
               </form>
-            </SheetContent>
-          </Sheet>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -920,6 +1274,9 @@ export default function UsersPage() {
                                </DropdownMenuItem>
                                <DropdownMenuItem onClick={() => window.location.href = `/users/${user.id}`}>
                                  Full Profile
+                               </DropdownMenuItem>
+                               <DropdownMenuItem onClick={() => openEditModal(user)}>
+                                 Edit Details
                                </DropdownMenuItem>
                                <DropdownMenuItem>View Billing</DropdownMenuItem>
                                <DropdownMenuSeparator />
@@ -1246,6 +1603,23 @@ export default function UsersPage() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>Collected By</Label>
+                <Select 
+                   defaultValue={selectedForPayment?.collector || "Office"} 
+                   onValueChange={(v) => setSelectedForPayment({ ...selectedForPayment, collected_by: v })}
+                >
+                   <SelectTrigger>
+                      <SelectValue placeholder="Select collector" />
+                   </SelectTrigger>
+                   <SelectContent>
+                      <SelectItem value="Office">Office / Online</SelectItem>
+                      {crmStaff.map((s: any) => (
+                         <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                      ))}
+                   </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Confirmation Amount</Label>
                 <Input 
                    type="number" 
@@ -1263,7 +1637,8 @@ export default function UsersPage() {
                disabled={isRecordingPayment}
                onClick={() => handleRecordPayment(
                  selectedForPayment.amount || selectedForPayment?.monthly_fee || selectedForPayment?.packages?.price || 0,
-                 selectedForPayment.method || "Cash"
+                 selectedForPayment.method || "Cash",
+                 selectedForPayment.collected_by || selectedForPayment?.collector || "Office"
                )}
             >
                {isRecordingPayment ? <RefreshCcw className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}

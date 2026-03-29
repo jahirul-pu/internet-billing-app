@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     console.log('--- Incoming Payment Request ---', body)
     
-    const { customer_id, amount, payment_method } = body
+    const { customer_id, amount, payment_method, collected_by } = body
 
     if (!customer_id || amount === undefined || !payment_method) {
       console.warn('Payment failed validation:', { customer_id, amount, payment_method })
@@ -23,17 +23,21 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // 1. Record the payment entry
+    // 1. Record the payment entry with attribution
     const { data: paymentData, error: paymentError } = await supabaseAdmin
       .from('payments')
       .insert([{
         customer_id,
         amount: parseFloat(amount),
-        payment_method
+        payment_method,
+        collected_by: collected_by || 'Office'
       }])
       .select()
 
-    if (paymentError) throw paymentError
+    if (paymentError) {
+      console.error('Supabase Payment Insert Error:', paymentError)
+      throw paymentError
+    }
 
     // 2. Update the customer's last_payment_date to today
     const { error: customerError } = await supabaseAdmin

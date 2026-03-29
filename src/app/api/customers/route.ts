@@ -63,7 +63,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { pppoe_username, pppoe_password, full_name, phone, package_id } = body
+    const { 
+      pppoe_username, pppoe_password, full_name, phone, package_id,
+      // New CRM fields
+      nid_number, address, area, collector,
+      monthly_bill, discount, billing_start_date, grace_period_days,
+      billing_day: providedBillingDay,
+    } = body
 
     if (!pppoe_username || !pppoe_password || !package_id) {
       return NextResponse.json(
@@ -88,10 +94,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // 2. Fetch the package to get the exact mikrotik_profile
+    // 2. Fetch the package to get the exact mikrotik_profile + price
     const { data: pkg, error: pkgError } = await supabaseAdmin
       .from('packages')
-      .select('mikrotik_profile')
+      .select('mikrotik_profile, price')
       .eq('id', package_id)
       .single()
 
@@ -158,10 +164,43 @@ export async function POST(request: Request) {
       targetZoneId = defaultZone?.id
     }
 
-    // 5. Insert the new customer mapping all attributes securely
+    // 5. Calculate billing_day from billing_start_date if not provided
+    let billingDay = providedBillingDay
+    if (!billingDay && billing_start_date) {
+      billingDay = new Date(billing_start_date).getDate()
+    }
+    if (!billingDay) billingDay = 1
+
+    // 6. Compute effective monthly fee
+    const effectiveMonthlyFee = Math.max(0, (monthly_bill || pkg.price || 0) - (discount || 0))
+
+    // 7. Insert the new customer mapping ALL CRM attributes
+    const insertPayload = {
+      pppoe_username,
+      pppoe_password,
+      full_name,
+      phone,
+      package_id,
+      nid_number: nid_number || null,
+      address: address || null,
+      area: area || null,
+      collector: collector || null,
+      monthly_bill: monthly_bill || pkg.price || 0,
+      monthly_fee: effectiveMonthlyFee,
+      discount: discount || 0,
+      billing_start_date: billing_start_date || null,
+      billing_day: billingDay,
+      grace_period_days: grace_period_days ?? 3,
+      ip_address: body.ip_address || null,
+      mac_address: body.mac_address || null,
+      zone_id: targetZoneId,
+      status: body.status || 'active',
+      expiry_date: body.expiry_date || null,
+    }
+
     const { data, error: insertError } = await supabaseAdmin
       .from('customers')
-      .insert([{ ...body, zone_id: targetZoneId }])
+      .insert([insertPayload])
       .select()
       .single()
 

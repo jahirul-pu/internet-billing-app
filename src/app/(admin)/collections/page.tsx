@@ -39,9 +39,11 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { useEffect, useCallback } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "sonner"
 
-/* ── Mock Data ── */
-
+// Pulled from database via /api/collections
 interface CollectionRecord {
   customer: string
   amount: number
@@ -62,16 +64,71 @@ interface StaffCollection {
   collections: CollectionRecord[]
 }
 
-const mockStaffCollections: StaffCollection[] = []
 
 export default function ShiftCollectionsPage() {
+  const [loading, setLoading] = useState(true)
   const [handoverStaff, setHandoverStaff] = useState<StaffCollection | null>(null)
   const [detailStaff, setDetailStaff] = useState<StaffCollection | null>(null)
   const [handoverAmount, setHandoverAmount] = useState("")
+  
+  const [staffCollections, setStaffCollections] = useState<StaffCollection[]>([])
+  const [summary, setSummary] = useState({
+    totalCollected: 0,
+    totalUnpaid: 0,
+    totalHeld: 0
+  })
 
-  const totalCollected = mockStaffCollections.reduce((s, r) => s + r.billsCollectedAmount, 0)
-  const totalUnpaid = mockStaffCollections.reduce((s, r) => s + r.remainingUnpaidAmount, 0)
-  const totalHeld = mockStaffCollections.reduce((s, r) => s + r.heldCash, 0)
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
+      // 1. Fetch Today's Shift Collections
+      const colRes = await fetch('/api/collections')
+      const colData = await colRes.json()
+      
+      // 2. Fetch Revenue Stats for Outstanding
+      const revRes = await fetch('/api/analytics/revenue')
+      const revData = await revRes.json()
+
+      if (!colRes.ok || !revRes.ok) throw new Error("Failed to fetch data")
+
+      // Map API collections to our UI interface
+      const mappedStaff: StaffCollection[] = colData.staff_collections?.map((s: any) => ({
+        id: s.staff_id,
+        name: s.staff_name,
+        zone: "Active Zone", // API doesn't return zone yet, defaulting
+        billsCollectedCount: s.bills_count,
+        billsCollectedAmount: s.total_collected,
+        remainingUnpaidCount: 0,
+        remainingUnpaidAmount: 0,
+        targetProgress: 100, // Just showing 100% if done today
+        heldCash: s.total_collected,
+        collections: s.transactions?.map((t: any) => ({
+          customer: t.customer_name,
+          amount: t.amount,
+          time: new Date(t.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          method: "Paid"
+        })) || []
+      })) || []
+
+      setStaffCollections(mappedStaff)
+      setSummary({
+        totalCollected: colData.total_collected_today || 0,
+        totalUnpaid: revData.summary?.outstanding || 0,
+        totalHeld: colData.total_collected_today || 0 // Assuming not yet handed over
+      })
+    } catch (err: any) {
+      console.error(err)
+      toast.error("Could not sync collection data")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  const { totalCollected, totalUnpaid, totalHeld } = summary
 
   return (
     <div className="flex-1 space-y-6 p-8 pt-6">
@@ -141,7 +198,19 @@ export default function ShiftCollectionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockStaffCollections.map((staff) => (
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                    <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-10 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-10 w-24" /></TableCell>
+                    <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                    <TableCell className="text-right"><Skeleton className="h-8 w-24 ml-auto" /></TableCell>
+                  </TableRow>
+                ))
+              ) : staffCollections.length > 0 ? (
+                staffCollections.map((staff) => (
                 <TableRow
                   key={staff.id}
                   className="cursor-pointer hover:bg-muted/50"
@@ -191,7 +260,14 @@ export default function ShiftCollectionsPage() {
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))}
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground italic">
+                  No collections recorded for today.
+                </TableCell>
+              </TableRow>
+            )}
             </TableBody>
           </Table>
         </CardContent>

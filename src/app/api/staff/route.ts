@@ -41,6 +41,7 @@ export async function POST(request: Request) {
         phone,
         roles: roles || [],
         zone: zone || 'Unassigned',
+        assigned_areas: body.assigned_areas || [],
         status: 'Active',
       }])
       .select()

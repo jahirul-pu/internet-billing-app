@@ -16,6 +16,8 @@ import {
   RefreshCcw,
   UserCheck,
   UserX,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -57,15 +59,7 @@ export default function UserProfilePage({
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
-  const [graceSaving, setGraceSaving] = useState(false)
-  const [graceDays, setGraceDays] = useState<string>("")
-
-  // Network Form State
-  const [networkForm, setNetworkForm] = useState({
-    pppoe_username: "",
-    pppoe_password: "",
-    mac_address: ""
-  })
+  const [showPassword, setShowPassword] = useState(false)
 
   // ── Fetch Customer Data (Supabase) ──
   const fetchCustomer = useCallback(async () => {
@@ -75,12 +69,6 @@ export default function UserProfilePage({
       if (!res.ok) throw new Error("Customer not found")
       const data = await res.json()
       setCustomer(data)
-      setGraceDays(data.custom_grace_period_days?.toString() ?? "")
-      setNetworkForm({
-        pppoe_username: data.pppoe_username || "",
-        pppoe_password: data.pppoe_password || "",
-        mac_address: data.mac_address || ""
-      })
     } catch (err: any) {
       toast.error(err.message)
     } finally {
@@ -156,27 +144,6 @@ export default function UserProfilePage({
     }
   }
 
-  const handleNetworkUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      setActionLoading(true)
-      const res = await fetch(`/api/customers/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(networkForm)
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || "Update failed")
-      }
-      toast.success("Network settings synced to router & database")
-      await fetchCustomer()
-    } catch (err: any) {
-      toast.error(err.message)
-    } finally {
-      setActionLoading(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -249,6 +216,10 @@ export default function UserProfilePage({
                 <><UserCheck className="mr-1.5 h-3.5 w-3.5" /> Resume Account</>
               )}
             </Button>
+            <Button variant="outline" size="sm" onClick={() => window.location.href = `/users?edit=${id}`}>
+              <Edit className="mr-1.5 h-3.5 w-3.5" />
+              Edit Profile
+            </Button>
             <Button size="sm">
               <CreditCard className="mr-1.5 h-3.5 w-3.5" />
               Collect Payment
@@ -260,158 +231,92 @@ export default function UserProfilePage({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="billing">Billing & Grace</TabsTrigger>
-          <TabsTrigger value="network">Network Settings</TabsTrigger>
           <TabsTrigger value="sessions">Live Session</TabsTrigger>
         </TabsList>
 
         {/* ── Overview Tab ── */}
         <TabsContent value="overview">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardDescription className="text-xs font-semibold uppercase tracking-wider">
-                  Internet Package
-                </CardDescription>
-                <Package className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">{customer.packages?.name || "No Plan"}</div>
-                <p className="text-xs text-muted-foreground mt-1">Rate limit handled by Queue Tree</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardDescription className="text-xs font-semibold uppercase tracking-wider">
-                  Monthly Rate
-                </CardDescription>
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">{customer.packages?.price || 0} BDT</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardDescription className="text-xs font-semibold uppercase tracking-wider">
-                  Expiry Date
-                </CardDescription>
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold">
-                    {customer.expiry_date ? new Date(customer.expiry_date).toLocaleDateString() : "No Expiry Set"}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardDescription className="text-xs font-semibold uppercase tracking-wider">
-                  PPPoE User
-                </CardDescription>
-                <Globe className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-bold font-mono text-primary">{customer.pppoe_username}</div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* ── Billing History Tab ── */}
-        <TabsContent value="billing">
           <Card className="mt-4">
             <CardHeader>
-              <CardTitle>Grace Period Override</CardTitle>
-              <CardDescription>
-                Customize how many days this user can stay online after their expiry date.
-              </CardDescription>
+              <CardTitle>Customer Details</CardTitle>
+              <CardDescription>Intake CRM and network information</CardDescription>
             </CardHeader>
-            <CardContent>
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault()
-                  try {
-                    setGraceSaving(true)
-                    const res = await fetch(`/api/customers/${id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ custom_grace_period_days: graceDays ? parseInt(graceDays) : null })
-                    })
-                    if (!res.ok) throw new Error("Failed to save grace period")
-                    toast.success("Grace period updated")
-                    await fetchCustomer()
-                  } catch (err: any) {
-                    toast.error(err.message)
-                  } finally {
-                    setGraceSaving(false)
-                  }
-                }}
-                className="flex items-end gap-4 max-w-md"
-              >
-                <div className="flex-1 space-y-2">
-                  <Label htmlFor="gracePeriod">Days Overdue Allowed</Label>
-                  <Input
-                    id="gracePeriod"
-                    type="number"
-                    min="0"
-                    placeholder="e.g. 7"
-                    value={graceDays}
-                    onChange={(e) => setGraceDays(e.target.value)}
-                  />
+            <CardContent className="grid gap-6 md:grid-cols-2">
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm text-primary uppercase tracking-wider">Identity & Location</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                     <p className="text-xs text-muted-foreground">Full Name</p>
+                     <p className="font-medium">{customer.full_name}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Phone Number</p>
+                     <p className="font-medium font-mono">{customer.phone}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">NID Number</p>
+                     <p className="font-medium font-mono">{customer.nid_number || "—"}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Address</p>
+                     <p className="font-medium">{customer.address || "—"}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Coverage Area</p>
+                     <p className="font-medium">{customer.area || "—"}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Assigned Collector</p>
+                     <p className="font-medium">{customer.collector || "—"}</p>
+                  </div>
                 </div>
-                <Button type="submit" size="sm" disabled={graceSaving}>
-                   {graceSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1.5" />}
-                   Save
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </div>
 
-        {/* ── Network Settings Tab ── */}
-        <TabsContent value="network">
-          <Card className="mt-4">
-            <CardHeader>
-              <CardTitle>Router Configuration</CardTitle>
-              <CardDescription>
-                Updating these fields will immediately sync the PPPoE secret on the MikroTik router.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleNetworkUpdate} className="grid gap-6 max-w-lg">
-                <div className="grid gap-2">
-                  <Label htmlFor="pppoe-user">PPPoE Username</Label>
-                  <Input 
-                    id="pppoe-user" 
-                    value={networkForm.pppoe_username} 
-                    onChange={(e) => setNetworkForm({...networkForm, pppoe_username: e.target.value})}
-                  />
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm text-primary uppercase tracking-wider">Billing & Network</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                     <p className="text-xs text-muted-foreground">Internet Package</p>
+                     <p className="font-medium">{customer.packages?.name || "—"}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Monthly Bill</p>
+                     <p className="font-medium">৳ {customer.monthly_bill || customer.packages?.price || 0}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Discount</p>
+                     <p className="font-medium text-emerald-600">৳ {customer.discount || 0}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Grace Period</p>
+                     <p className="font-medium">{customer.custom_grace_period_days || 3} days</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">PPPoE Username</p>
+                     <p className="font-medium font-mono text-blue-600">{customer.pppoe_username}</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">PPPoE Password</p>
+                     <div className="flex items-center gap-2">
+                        <p className="font-medium font-mono">
+                           {showPassword ? customer.pppoe_password : "••••••••"}
+                        </p>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6" 
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </Button>
+                     </div>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">MAC Address (Caller-ID)</p>
+                     <p className="font-medium font-mono">{customer.mac_address || "—"}</p>
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="pppoe-pwd">PPPoE Password</Label>
-                  <Input
-                    id="pppoe-pwd"
-                    type="password"
-                    value={networkForm.pppoe_password}
-                    onChange={(e) => setNetworkForm({...networkForm, pppoe_password: e.target.value})}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="mac-addr">MAC Address (Caller-ID)</Label>
-                  <Input
-                    id="mac-addr"
-                    value={networkForm.mac_address}
-                    onChange={(e) => setNetworkForm({...networkForm, mac_address: e.target.value})}
-                    placeholder="e.g. AA:BB:CC:DD:EE:FF"
-                    className="font-mono"
-                  />
-                </div>
-                <Button type="submit" className="w-fit" disabled={actionLoading}>
-                   {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Wifi className="mr-2 h-4 w-4" />}
-                   Sync to Router
-                </Button>
-              </form>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

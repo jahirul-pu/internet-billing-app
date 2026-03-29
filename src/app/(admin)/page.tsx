@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { 
   Users, 
   Cpu, 
@@ -15,7 +15,9 @@ import {
   Database,
   DollarSign,
   CheckCircle2,
-  RefreshCcw
+  RefreshCcw,
+  ArrowDown,
+  ArrowUp
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -35,6 +37,8 @@ import {
   PieChart, 
   Pie, 
   Cell,
+  Tooltip,
+  ResponsiveContainer,
 } from "recharts"
 import { toast } from "sonner"
 import {
@@ -98,6 +102,16 @@ const statusChartConfig = {
   deactivated: { label: "Deactivated", color: "hsl(var(--chart-red))" },
 } satisfies ChartConfig
 
+/* ── Core VLAN Uplinks Config ── */
+const DASHBOARD_VLANS = [
+  { name: 'IIG',      color: '#6366f1' },
+  { name: 'BDIX',     color: '#10b981' },
+  { name: 'YouTube',  color: '#f59e0b' },
+  { name: 'Facebook', color: '#3b82f6' },
+  { name: 'FTP',      color: '#ef4444' },
+]
+const MAX_VLAN_POINTS = 30
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsStats | null>(null)
@@ -106,21 +120,32 @@ export default function DashboardPage() {
   const [topConsumers, setTopConsumers] = useState<any[]>([])
   const [consumersLoading, setConsumersLoading] = useState(true)
   const [consumersTimeout, setConsumersTimeout] = useState(false)
-  const [revenue, setRevenue] = useState({ collected: 0, outstanding: 0 })
+  const [revenue, setRevenue] = useState({ collected: 0, collected_field: 0, collected_office: 0, outstanding: 0 })
   const [errorCount, setErrorCount] = useState(0)
+
+  // VLAN uplink state
+  const [vlanLive, setVlanLive] = useState<Record<string, { rx_mbps: number; tx_mbps: number }>>({})
+  const [vlanHistory, setVlanHistory] = useState<Record<string, { time: string; rx: number; tx: number }[]>>(() => {
+    const init: Record<string, { time: string; rx: number; tx: number }[]> = {}
+    DASHBOARD_VLANS.forEach(v => { init[v.name] = [] })
+    return init
+  })
   
   const bandwidthPollRef = useRef<NodeJS.Timeout | null>(null)
   const analyticsPollRef = useRef<NodeJS.Timeout | null>(null)
   const topConsumersPollRef = useRef<NodeJS.Timeout | null>(null)
   const revenuePollRef = useRef<NodeJS.Timeout | null>(null)
+  const vlanPollRef = useRef<NodeJS.Timeout | null>(null)
 
   // ── Fetch Throughput Stats (1s polling) ──
   const fetchThroughput = async () => {
     try {
       const res = await fetch("/api/mikrotik/dashboard")
+      if (!res.ok) {
+        setErrorCount(prev => prev + 1)
+        return
+      }
       const data = await res.json()
-
-      if (!res.ok) throw new Error(data.error || "Failed to fetch dashboard data")
 
       const newStats: DashboardStats = data.stats
       setStats(newStats)
@@ -150,8 +175,9 @@ export default function DashboardPage() {
   const fetchAnalytics = async () => {
     try {
       const res = await fetch("/api/mikrotik/analytics")
+      if (!res.ok) return
       const data = await res.json()
-      if (res.ok) setAnalytics(data.stats)
+      setAnalytics(data.stats)
     } catch (err) {
       console.error("Analytics fetch fail", err)
     } finally {
@@ -164,8 +190,9 @@ export default function DashboardPage() {
     const timer = setTimeout(() => setConsumersTimeout(true), 5000)
     try {
       const res = await fetch("/api/analytics/top-consumers")
+      if (!res.ok) return
       const data = await res.json()
-      if (res.ok && data.success) {
+      if (data.success) {
         setTopConsumers(data.top_consumers || [])
         setConsumersTimeout(false) // Reset if we got data
       }
@@ -181,8 +208,9 @@ export default function DashboardPage() {
   const fetchRevenue = async () => {
     try {
       const res = await fetch("/api/analytics/revenue")
+      if (!res.ok) return
       const data = await res.json()
-      if (res.ok && data.success) {
+      if (data.success) {
         setRevenue(data.summary)
       }
     } catch (err) {
@@ -190,21 +218,46 @@ export default function DashboardPage() {
     }
   }
 
+  // ── Fetch VLAN Uplinks (2s polling) ──
+  const fetchVlanLive = useCallback(async () => {
+    try {
+      const res = await fetch('/api/mikrotik/uplink-live', { cache: 'no-store' })
+      if (!res.ok) return
+      const json = await res.json()
+      if (!json.success) return
+      const vlans: Record<string, { rx_mbps: number; tx_mbps: number }> = json.vlans || {}
+      setVlanLive(vlans)
+      const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      setVlanHistory(prev => {
+        const next = { ...prev }
+        DASHBOARD_VLANS.forEach(v => {
+          const point = { time: now, rx: vlans[v.name]?.rx_mbps ?? 0, tx: vlans[v.name]?.tx_mbps ?? 0 }
+          const arr = [...(next[v.name] || []), point]
+          next[v.name] = arr.slice(-MAX_VLAN_POINTS)
+        })
+        return next
+      })
+    } catch { /* silent */ }
+  }, [])
+
   useEffect(() => {
     fetchThroughput()
     fetchAnalytics()
     fetchTopConsumers()
     fetchRevenue()
-    bandwidthPollRef.current = setInterval(fetchThroughput, 1000)
+    fetchVlanLive()
+    bandwidthPollRef.current = setInterval(fetchThroughput, 2000)
     analyticsPollRef.current = setInterval(fetchAnalytics, 10000)
     topConsumersPollRef.current = setInterval(fetchTopConsumers, 60000)
     revenuePollRef.current = setInterval(fetchRevenue, 60000)
+    vlanPollRef.current = setInterval(fetchVlanLive, 2000)
 
     return () => {
       if (bandwidthPollRef.current) clearInterval(bandwidthPollRef.current)
       if (analyticsPollRef.current) clearInterval(analyticsPollRef.current)
       if (topConsumersPollRef.current) clearInterval(topConsumersPollRef.current)
       if (revenuePollRef.current) clearInterval(revenuePollRef.current)
+      if (vlanPollRef.current) clearInterval(vlanPollRef.current)
     }
   }, [])
 
@@ -293,7 +346,8 @@ export default function DashboardPage() {
             <CardContent>
                <div className="text-3xl font-bold text-emerald-600">৳ {revenue.collected.toLocaleString()}</div>
                <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.3 w-3.3" /> Successfully reconciled invoices
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 
+                  (Field: ৳ {revenue.collected_field?.toLocaleString() || 0} | Office: ৳ {revenue.collected_office?.toLocaleString() || 0})
                </p>
             </CardContent>
          </Card>
@@ -334,6 +388,77 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* ── Core VLAN Uplinks ── */}
+      <div>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-1.5 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-lg border border-indigo-500/20">
+            <Zap className="h-4 w-4 text-indigo-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight">Core VLAN Uplinks</h3>
+            <p className="text-[10px] text-muted-foreground">Live bandwidth · 2s polling</p>
+          </div>
+          <Badge variant="outline" className="ml-auto text-[10px] border-emerald-500/50 text-emerald-400 bg-emerald-500/10 h-5">
+            <Activity className="h-2.5 w-2.5 mr-1 animate-pulse" />
+            Live
+          </Badge>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {DASHBOARD_VLANS.map(vlan => {
+            const data = vlanHistory[vlan.name] || []
+            const current = vlanLive[vlan.name]
+            const rx = current?.rx_mbps ?? 0
+            const tx = current?.tx_mbps ?? 0
+            return (
+              <Card key={vlan.name} className="relative overflow-hidden shadow-none border-border/50 bg-card/50 group hover:border-border/80 transition-colors">
+                <div className="absolute top-0 left-0 right-0 h-[2px] opacity-60 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(90deg, transparent, ${vlan.color}, transparent)` }} />
+                <CardHeader className="pb-1 pt-3 px-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: vlan.color }} />
+                      {vlan.name}
+                    </CardTitle>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="flex items-center gap-0.5 text-[10px]">
+                      <ArrowDown className="h-2.5 w-2.5 text-emerald-400" />
+                      <span className="font-mono font-bold text-emerald-400">{rx.toFixed(1)}</span>
+                    </span>
+                    <span className="flex items-center gap-0.5 text-[10px]">
+                      <ArrowUp className="h-2.5 w-2.5 text-blue-400" />
+                      <span className="font-mono font-bold text-blue-400">{tx.toFixed(1)}</span>
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">Mbps</span>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-1 pb-1 pt-0">
+                  <div className="h-[60px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data} margin={{ top: 2, right: 2, left: -24, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id={`dg-rx-${vlan.name}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id={`dg-tx-${vlan.name}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="time" hide />
+                        <YAxis tick={{ fontSize: 8 }} tickLine={false} axisLine={false} />
+                        <Area type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={1.5} fill={`url(#dg-rx-${vlan.name})`} dot={false} isAnimationActive={false} />
+                        <Area type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={1} fill={`url(#dg-tx-${vlan.name})`} dot={false} isAnimationActive={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-12">

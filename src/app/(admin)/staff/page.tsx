@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { MoreHorizontal, Plus, ContactRound, Phone, MapPin, Loader2, UserRound, Pencil, ShieldOff, ShieldCheck, Trash2, AlertTriangle } from "lucide-react"
+import { MoreHorizontal, Plus, ContactRound, Phone, MapPin, Loader2, UserRound, Pencil, ShieldOff, ShieldCheck, Trash2, AlertTriangle, X, CheckCircle2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -47,6 +47,7 @@ interface StaffMember {
   roles: string[]
   phone: string
   zone: string
+  assigned_areas: string[]
   status: "Active" | "Inactive"
   created_at?: string
   updated_at?: string
@@ -72,6 +73,8 @@ export default function StaffDirectoryPage() {
   const [formName, setFormName] = useState("")
   const [formPhone, setFormPhone] = useState("")
   const [formZone, setFormZone] = useState("")
+  const [formAreas, setFormAreas] = useState<string[]>([])
+  const [formAreaInput, setFormAreaInput] = useState("")
 
   /* ── View Profile dialog ── */
   const [viewMember, setViewMember] = useState<StaffMember | null>(null)
@@ -82,6 +85,8 @@ export default function StaffDirectoryPage() {
   const [editPhone, setEditPhone] = useState("")
   const [editZone, setEditZone] = useState("")
   const [editRoles, setEditRoles] = useState<string[]>([])
+  const [editAreas, setEditAreas] = useState<string[]>([])
+  const [editAreaInput, setEditAreaInput] = useState("")
 
   /* ── Confirmation dialogs ── */
   const [confirmDeactivate, setConfirmDeactivate] = useState<StaffMember | null>(null)
@@ -90,16 +95,27 @@ export default function StaffDirectoryPage() {
 
   const totalActive = staff.filter((s) => s.status === "Active").length
 
+  const [collectionTargets, setCollectionTargets] = useState<Record<string, { total_users: number, expected_collection: number, actual_collected: number }>>({})
+
   /* ── Fetch staff on mount ── */
   const fetchStaff = useCallback(async () => {
     try {
       setIsLoading(true)
-      const res = await fetch("/api/staff")
-      if (!res.ok) throw new Error("Failed to fetch staff")
-      const json = await res.json()
+      const [staffRes, targetsRes] = await Promise.all([
+        fetch("/api/staff"),
+        fetch("/api/staff/collection-targets")
+      ])
+
+      if (!staffRes.ok) throw new Error("Failed to fetch staff")
+      const json = await staffRes.json()
       setStaff(json.data || [])
+
+      if (targetsRes.ok) {
+        const targetsJson = await targetsRes.json()
+        setCollectionTargets(targetsJson.targets || {})
+      }
     } catch (err) {
-      console.error("Error fetching staff:", err)
+      console.error("Error fetching staff data:", err)
     } finally {
       setIsLoading(false)
     }
@@ -115,6 +131,8 @@ export default function StaffDirectoryPage() {
     setFormPhone("")
     setFormZone("")
     setSelectedRoles([])
+    setFormAreas([])
+    setFormAreaInput("")
   }
 
   /* ── Handle add employee ── */
@@ -132,6 +150,7 @@ export default function StaffDirectoryPage() {
           phone: formPhone.trim(),
           roles: selectedRoles,
           zone: formZone.trim() || "Unassigned",
+          assigned_areas: formAreas,
         }),
       })
 
@@ -209,6 +228,8 @@ export default function StaffDirectoryPage() {
     setEditPhone(member.phone)
     setEditZone(member.zone)
     setEditRoles(member.roles || [])
+    setEditAreas(member.assigned_areas || [])
+    setEditAreaInput("")
   }
 
   /* ── Handle save edit ── */
@@ -226,6 +247,7 @@ export default function StaffDirectoryPage() {
           phone: editPhone.trim(),
           roles: editRoles,
           zone: editZone.trim() || "Unassigned",
+          assigned_areas: editAreas,
         }),
       })
 
@@ -328,6 +350,40 @@ export default function StaffDirectoryPage() {
                   />
                 </div>
               </div>
+              <div className="grid gap-2">
+                <Label>Assigned Areas</Label>
+                <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 border rounded-lg bg-muted/30">
+                  {formAreas.map(area => (
+                    <Badge key={area} variant="secondary" className="gap-1 text-xs px-2 py-0.5">
+                      {area}
+                      <button
+                        type="button"
+                        className="ml-0.5 rounded-full hover:bg-foreground/10 p-0.5"
+                        onClick={() => setFormAreas(prev => prev.filter(a => a !== area))}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </Badge>
+                  ))}
+                  <Input
+                    className="border-0 bg-transparent h-6 min-w-[120px] flex-1 p-0 text-sm shadow-none focus-visible:ring-0"
+                    placeholder={formAreas.length === 0 ? "Type area name & press Enter..." : "Add more..."}
+                    value={formAreaInput}
+                    onChange={(e) => setFormAreaInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && formAreaInput.trim()) {
+                        e.preventDefault()
+                        const val = formAreaInput.trim()
+                        if (!formAreas.includes(val)) {
+                          setFormAreas(prev => [...prev, val])
+                        }
+                        setFormAreaInput("")
+                      }
+                    }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">Press Enter after each area name to add it as a tag.</p>
+              </div>
               <DialogFooter className="mt-4">
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -399,6 +455,9 @@ export default function StaffDirectoryPage() {
                   <TableHead>Roles</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Assigned Zone</TableHead>
+                  <TableHead>Areas</TableHead>
+                  <TableHead>Target (BDT)</TableHead>
+                  <TableHead>Collected (BDT)</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -422,6 +481,50 @@ export default function StaffDirectoryPage() {
                     </TableCell>
                     <TableCell className="font-mono text-sm">{member.phone}</TableCell>
                     <TableCell>{member.zone}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {member.assigned_areas?.map(area => (
+                          <Badge
+                            key={area}
+                            variant="outline"
+                            className="shadow-none text-[10px] px-1.5 py-0 bg-violet-500/10 text-violet-600 border-violet-200"
+                          >
+                            {area}
+                          </Badge>
+                        ))}
+                        {(!member.assigned_areas || member.assigned_areas.length === 0) && (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {collectionTargets[member.name] ? (
+                        <div className="font-medium text-muted-foreground">
+                          ৳ {collectionTargets[member.name].expected_collection.toLocaleString()}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {collectionTargets[member.name] ? (
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "font-medium",
+                            collectionTargets[member.name].actual_collected >= collectionTargets[member.name].expected_collection && collectionTargets[member.name].expected_collection > 0
+                              ? "text-emerald-600 font-bold"
+                              : "text-amber-600"
+                          )}>
+                            ৳ {collectionTargets[member.name].actual_collected.toLocaleString()}
+                          </span>
+                          {collectionTargets[member.name].actual_collected >= collectionTargets[member.name].expected_collection && collectionTargets[member.name].expected_collection > 0 && (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant={member.status === "Active" ? "default" : "secondary"}
@@ -529,6 +632,54 @@ export default function StaffDirectoryPage() {
                     )}
                   </div>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Areas</span>
+                  <div className="flex flex-wrap gap-1">
+                    {viewMember.assigned_areas?.map(area => (
+                      <Badge
+                        key={area}
+                        variant="outline"
+                        className="shadow-none text-[10px] px-1.5 bg-violet-500/10 text-violet-600 border-violet-200"
+                      >
+                        {area}
+                      </Badge>
+                    ))}
+                    {(!viewMember.assigned_areas || viewMember.assigned_areas.length === 0) && (
+                      <span className="text-sm text-muted-foreground">None assigned</span>
+                    )}
+                  </div>
+                </div>
+                 
+                <div className="flex items-center justify-between border-t pt-3 mt-1">
+                  <span className="text-sm text-muted-foreground">Total Assigned Users</span>
+                  <span className="text-sm font-semibold">
+                    {collectionTargets[viewMember.name]?.total_users || 0} active users
+                  </span>
+                </div>
+                <div className="flex flex-col gap-3 border-t pt-3 mt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground font-medium">Expected Target</span>
+                    <span className="text-sm font-medium text-muted-foreground">
+                      ৳ {collectionTargets[viewMember.name]?.expected_collection?.toLocaleString() || "0"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground font-medium">Actual Collected</span>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "text-sm font-bold",
+                        (collectionTargets[viewMember.name]?.actual_collected || 0) >= (collectionTargets[viewMember.name]?.expected_collection || 0) && (collectionTargets[viewMember.name]?.expected_collection || 0) > 0
+                          ? "text-emerald-600"
+                          : "text-amber-600"
+                      )}>
+                        ৳ {collectionTargets[viewMember.name]?.actual_collected?.toLocaleString() || "0"}
+                      </span>
+                      {(collectionTargets[viewMember.name]?.actual_collected || 0) >= (collectionTargets[viewMember.name]?.expected_collection || 0) && (collectionTargets[viewMember.name]?.expected_collection || 0) > 0 && (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      )}
+                    </div>
+                  </div>
+                </div>
                 {viewMember.created_at && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Joined</span>
@@ -615,6 +766,40 @@ export default function StaffDirectoryPage() {
                   onChange={(e) => setEditZone(e.target.value)}
                 />
               </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Assigned Areas</Label>
+              <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 border rounded-lg bg-muted/30">
+                {editAreas.map(area => (
+                  <Badge key={area} variant="secondary" className="gap-1 text-xs px-2 py-0.5">
+                    {area}
+                    <button
+                      type="button"
+                      className="ml-0.5 rounded-full hover:bg-foreground/10 p-0.5"
+                      onClick={() => setEditAreas(prev => prev.filter(a => a !== area))}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </Badge>
+                ))}
+                <Input
+                  className="border-0 bg-transparent h-6 min-w-[120px] flex-1 p-0 text-sm shadow-none focus-visible:ring-0"
+                  placeholder={editAreas.length === 0 ? "Type area name & press Enter..." : "Add more..."}
+                  value={editAreaInput}
+                  onChange={(e) => setEditAreaInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && editAreaInput.trim()) {
+                      e.preventDefault()
+                      const val = editAreaInput.trim()
+                      if (!editAreas.includes(val)) {
+                        setEditAreas(prev => [...prev, val])
+                      }
+                      setEditAreaInput("")
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">Press Enter after each area name to add it as a tag.</p>
             </div>
             <DialogFooter className="mt-4">
               <Button type="submit" className="w-full" disabled={isSubmitting}>

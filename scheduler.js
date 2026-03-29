@@ -1,41 +1,53 @@
 const cron = require('node-cron');
 const axios = require('axios');
+require('dotenv').config({ path: '.env.local' });
 
 /**
- * ISP Dashboard Traffic Logger Scheduler
- * 
- * This script runs in the background and triggers the /api/mikrotik/log-traffic 
- * endpoint every hour to capture usage snapshots.
+ * ISP Dashboard Traffic & Uplink Logger Scheduler
  */
 
-const API_URL = 'http://localhost:3000/api/mikrotik/log-traffic';
+const SNAPSHOT_API = 'http://localhost:3000/api/mikrotik/log-traffic';
+const UPLINK_API = 'http://localhost:3000/api/cron/uplink-logger';
+const CRON_SECRET = process.env.CRON_SECRET || 'isp_billing_cron_2026';
 
-console.log('--- ISP Traffic Logger Service Started ---');
-console.log(`Target: ${API_URL}`);
-console.log('Schedule: Every hour (0 * * * *)');
+console.log('--- ISP Traffic & Uplink Logger Service Started ---');
+console.log(`Traffic Target (1h): ${SNAPSHOT_API}`);
+console.log(`Uplink Target (15m): ${UPLINK_API}`);
 
-// 1. Schedule the task (0 * * * * = at the start of every hour)
+// 1. User Traffic Logger (Every hour)
 cron.schedule('0 * * * *', async () => {
     const timestamp = new Date().toLocaleString();
-    console.log(`[${timestamp}] Initiating traffic snapshot...`);
-    
+    console.log(`[${timestamp}] Initiating user traffic snapshot...`);
     try {
-        const response = await axios.post(API_URL);
+        const response = await axios.post(SNAPSHOT_API);
         if (response.data.success) {
             console.log(`[${timestamp}] SUCCESS: Captured ${response.data.count} active sessions.`);
-        } else {
-            console.warn(`[${timestamp}] WARNING: API returned success=false.`, response.data);
         }
     } catch (error) {
-        console.error(`[${timestamp}] ERROR: Failed to reach logger API.`, error.message);
-        if (error.code === 'ECONNREFUSED') {
-            console.error('>> Hint: Ensure your Next.js server is running on port 3000.');
-        }
+        console.error(`[${timestamp}] ERROR: User Traffic Snapshot failed.`, error.message);
     }
 });
 
-// 2. Initial Run (Optional: uncomment if you want a snapshot immediately on start)
-// console.log('Performing initial boot snapshot...');
-// axios.post(API_URL).catch(e => console.error('Initial snapshot failed:', e.message));
+// 2. Core Uplink Logger (Every 15 minutes)
+cron.schedule('*/15 * * * *', async () => {
+    const timestamp = new Date().toLocaleString();
+    console.log(`[${timestamp}] Initiating core uplink snapshot...`);
+    try {
+        const response = await axios.post(UPLINK_API, {}, {
+            headers: { 'Authorization': `Bearer ${CRON_SECRET}` }
+        });
+        if (response.data.success) {
+            console.log(`[${timestamp}] SUCCESS: Logged VLANs: ${response.data.logged.join(', ')}.`);
+        }
+    } catch (error) {
+        console.error(`[${timestamp}] ERROR: Core Uplink Snapshot failed.`, error.message);
+    }
+});
 
-console.log('Logger is now idle and waiting for the next scheduled interval.');
+// Initial runs to verify & populate immediately on start
+console.log('--- Performing initial boot snapshots ---');
+axios.post(SNAPSHOT_API).catch(e => console.error('Initial user snapshot failed:', e.message));
+axios.post(UPLINK_API, {}, { headers: { 'Authorization': `Bearer ${CRON_SECRET}` } })
+    .catch(e => console.error('Initial uplink snapshot failed:', e.message));
+
+console.log('--- Logger is now idle and waiting for the next scheduled interval ---');
