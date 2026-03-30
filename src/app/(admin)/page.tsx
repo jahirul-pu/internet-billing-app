@@ -434,8 +434,7 @@ export default function DashboardPage() {
         {/* ── Row 1: THE PULSE — 5 KPI Cards ─────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
           {/* KPI 1: Online Status */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-500/60 to-transparent" />
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
               <CardTitle className="text-sm font-medium">
                 Online Status
@@ -459,8 +458,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* KPI 2: Subscribers */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent" />
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
               <CardTitle className="text-sm font-medium">
                 Total Subscribers
@@ -484,8 +482,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* KPI 3: Monthly Target */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-violet-500/60 to-transparent" />
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
               <CardTitle className="text-sm font-medium">
                 Monthly Target
@@ -504,8 +501,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* KPI 4: Actual Vault */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
               <CardTitle className="text-sm font-medium">
                 Actual Vault
@@ -529,8 +525,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* KPI 5: Due Bills */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-red-500/60 to-transparent" />
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
               <CardTitle className="text-sm font-medium">
                 Due Bills
@@ -552,8 +547,7 @@ export default function DashboardPage() {
         {/* ── Row 2: THE TELEMETRY — Charts ──────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Left: Core Uplinks (2/3 width) */}
-          <Card className="lg:col-span-2 relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500/50 via-emerald-500/50 to-amber-500/50" />
+          <Card className="lg:col-span-2">
             <CardHeader className="pb-2 pt-3 px-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -584,19 +578,10 @@ export default function DashboardPage() {
                   const rx = current?.rx_mbps ?? 0
                   const tx = current?.tx_mbps ?? 0
                   return (
-                    <div
-                      key={vlan.name}
-                      className="relative overflow-hidden rounded-lg border border-border/20 bg-background/40 backdrop-blur-sm group hover:border-border/40 transition-all"
-                    >
-                      <div
-                        className="absolute top-0 left-0 right-0 h-[1.5px] opacity-50 group-hover:opacity-100 transition-opacity"
-                        style={{
-                          background: `linear-gradient(90deg, transparent, ${vlan.color}, transparent)`,
-                        }}
-                      />
+                    <Card key={vlan.name} className="overflow-hidden">
                       <div className="px-3 pt-2.5 pb-1">
                         <div className="flex items-center justify-between">
-                          <Badge variant="outline" className="gap-1.5 h-6 border-border/30 bg-background/50 text-sm font-bold px-2">
+                          <Badge variant="outline" className="gap-1.5 h-6 text-sm font-bold px-2">
                             <span
                               className="w-2 h-2 rounded-full animate-pulse"
                               style={{ background: vlan.color }}
@@ -694,7 +679,7 @@ export default function DashboardPage() {
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
-                    </div>
+                    </Card>
                   )
                 })}
               </div>
@@ -702,8 +687,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Right: Revenue Velocity */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500/60 to-transparent" />
+          <Card>
             <CardHeader className="pb-2 pt-3 px-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -770,8 +754,7 @@ export default function DashboardPage() {
         {/* ── Row 3: THE ACTION CENTER ─────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Left: Recent Activity */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/60 to-transparent" />
+          <Card>
             <CardHeader className="pb-2 pt-3 px-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -869,8 +852,7 @@ export default function DashboardPage() {
           </Card>
 
           {/* Right: Quick Controls */}
-          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
-            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-purple-500/60 to-transparent" />
+          <Card>
             <CardHeader className="pb-2 pt-3 px-4">
               <div className="flex items-center gap-2.5">
                 <Command className="h-4 w-4 text-muted-foreground mr-2" />
@@ -889,11 +871,9 @@ export default function DashboardPage() {
                 <Link href="/users?action=new" className="block">
                   <Button
                     variant="outline"
-                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 transition-all group"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 transition-all group"
                   >
-                    <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-1 ring-emerald-500/20 group-hover:bg-emerald-500/20 group-hover:ring-emerald-500/40 group-hover:shadow-[0_0_20px_rgba(52,211,153,0.15)] transition-all">
-                      <UserPlus className="h-5 w-5 text-emerald-400" />
-                    </div>
+                    <UserPlus className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
                     <span className="text-xs font-bold tracking-wide">
                       Add New User
                     </span>
@@ -903,11 +883,9 @@ export default function DashboardPage() {
                 <Link href="/collections" className="block">
                   <Button
                     variant="outline"
-                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-amber-500/10 hover:border-amber-500/30 hover:text-amber-400 transition-all group"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 transition-all group"
                   >
-                    <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center ring-1 ring-amber-500/20 group-hover:bg-amber-500/20 group-hover:ring-amber-500/40 group-hover:shadow-[0_0_20px_rgba(251,191,36,0.15)] transition-all">
-                      <CreditCard className="h-5 w-5 text-amber-400" />
-                    </div>
+                    <CreditCard className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
                     <span className="text-xs font-bold tracking-wide">
                       Log Manual Payment
                     </span>
@@ -917,11 +895,9 @@ export default function DashboardPage() {
                 <Link href="/communications" className="block">
                   <Button
                     variant="outline"
-                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-blue-500/10 hover:border-blue-500/30 hover:text-blue-400 transition-all group"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 transition-all group"
                   >
-                    <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center ring-1 ring-blue-500/20 group-hover:bg-blue-500/20 group-hover:ring-blue-500/40 group-hover:shadow-[0_0_20px_rgba(96,165,250,0.15)] transition-all">
-                      <MessageSquareText className="h-5 w-5 text-blue-400" />
-                    </div>
+                    <MessageSquareText className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
                     <span className="text-xs font-bold tracking-wide">
                       Broadcast SMS
                     </span>
@@ -931,11 +907,9 @@ export default function DashboardPage() {
                 <Link href="/staff" className="block">
                   <Button
                     variant="outline"
-                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-violet-500/10 hover:border-violet-500/30 hover:text-violet-400 transition-all group"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 transition-all group"
                   >
-                    <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center ring-1 ring-violet-500/20 group-hover:bg-violet-500/20 group-hover:ring-violet-500/40 group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)] transition-all">
-                      <ContactRound className="h-5 w-5 text-violet-400" />
-                    </div>
+                    <ContactRound className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
                     <span className="text-xs font-bold tracking-wide">
                       Add Staff
                     </span>
