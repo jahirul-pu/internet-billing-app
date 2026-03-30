@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { BackupsTab } from "./components/backups-tab"
+import { RouterConfig } from "./components/router-config"
 import { toast } from "sonner"
 
 const navigation = [
@@ -309,6 +310,9 @@ export default function SettingsPage() {
                   </form>
                 </CardContent>
               </Card>
+
+              {/* Dynamic Discovery Targets */}
+              <RouterConfig />
             </div>
           )}
 

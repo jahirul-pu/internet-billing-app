@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu"
+import { LiveClock } from "@/components/live-clock"
 
 export function Header() {
   return (
@@ -32,12 +33,17 @@ export function Header() {
           </SheetContent>
         </Sheet>
         
-        <div className="flex items-center gap-2 font-bold flex-1 text-lg tracking-tight">
+        <div className="flex items-center gap-2 font-bold text-lg tracking-tight">
           <span className="text-xl">🐱</span>
           <span className="hidden sm:inline-block">Purrfect Portal</span>
         </div>
       </div>
       
+      {/* Centered Clock */}
+      <div className="flex-1 flex justify-center h-full items-center mr-auto px-4">
+         <LiveClock />
+      </div>
+
       <div className="flex items-center gap-2 sm:gap-4 pr-2">
         {/* Quick Actions */}
         <DropdownMenu>

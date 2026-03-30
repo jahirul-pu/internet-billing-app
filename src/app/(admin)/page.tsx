@@ -1,55 +1,66 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { 
-  Users, 
-  Cpu, 
-  Activity, 
-  Clock, 
+import Link from "next/link"
+import {
+  Users,
+  Activity,
+  Clock,
   AlertTriangle,
   Loader2,
-  Wifi,
+  Signal,
   Zap,
   ShieldAlert,
-  ArrowUpRight,
-  Database,
+  ShieldOff,
+  Target,
   DollarSign,
   CheckCircle2,
-  RefreshCcw,
   ArrowDown,
-  ArrowUp
+  ArrowUp,
+  UserPlus,
+  MessageSquareText,
+  CreditCard,
+  ContactRound,
+  Terminal,
+  Wallet,
+  Radio,
+  TrendingUp,
+  Server,
+  Command,
+  CircleAlert,
+  Cpu,
+  MemoryStick,
+  Timer,
+  Cable,
+  BarChart3,
+  ScrollText,
+  UserCheck,
+  UserX,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from "@/components/ui/card"
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  AreaChart, 
-  Area, 
-  PieChart, 
-  Pie, 
-  Cell,
-  Tooltip,
+import { Separator } from "@/components/ui/separator"
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from "recharts"
 import { toast } from "sonner"
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart"
-import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 
+// ── Interfaces ──
 interface DashboardStats {
   cpu_load: number
   mem_usage: number
@@ -69,103 +80,113 @@ interface AnalyticsStats {
   load_factor: number
 }
 
-interface GraphDataPoint {
-  time: string
-  wan1_rx: number
-  wan1_tx: number
-  wan2_rx: number
-  wan2_tx: number
+interface LogEntry {
+  id: string
+  action_type: string
+  target_user: string
+  description: string
+  triggered_by: string
+  created_at: string
 }
 
-const bandwidthChartConfig = {
-  wan1_rx: {
-    label: "WAN1 Download",
-    color: "hsl(var(--chart-1))",
-  },
-  wan1_tx: {
-    label: "WAN1 Upload",
-    color: "hsl(var(--chart-2))",
-  },
-  wan2_rx: {
-    label: "WAN2 Download",
-    color: "hsl(var(--chart-3))",
-  },
-  wan2_tx: {
-    label: "WAN2 Upload",
-    color: "hsl(var(--chart-4))",
-  },
-} satisfies ChartConfig
+interface PaymentDayData {
+  day: string
+  amount: number
+}
 
-const statusChartConfig = {
-  online: { label: "Online", color: "#10b981" },
-  offline: { label: "Offline", color: "#94a3b8" },
-  deactivated: { label: "Deactivated", color: "#ef4444" },
-} satisfies ChartConfig
-
-/* ── Core VLAN Uplinks Config ── */
+// ── VLAN Configuration ──
 const DASHBOARD_VLANS = [
-  { name: 'IIG',      color: '#6366f1' },
-  { name: 'BDIX',     color: '#10b981' },
-  { name: 'YouTube',  color: '#f59e0b' },
-  { name: 'Facebook', color: '#3b82f6' },
-  { name: 'FTP',      color: '#ef4444' },
+  { name: "IIG", label: "IIG", color: "#818cf8" },
+  { name: "BDIX", label: "BDIX", color: "#34d399" },
+  { name: "YouTube", label: "GGC (YouTube)", color: "#fbbf24" },
+  { name: "Facebook", label: "Facebook", color: "#60a5fa" },
+  { name: "FTP", label: "FTP", color: "#f87171" },
 ]
-const MAX_VLAN_POINTS = 30
+const MAX_VLAN_POINTS = 40
 
+
+// ── Custom Tooltip for BarChart ──
+function RevenueTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/95 backdrop-blur-md px-3 py-2 shadow-xl">
+      <p className="text-[11px] font-semibold text-foreground mb-0.5">{label}</p>
+      <p className="text-sm font-bold text-emerald-400">৳ {payload[0].value.toLocaleString()}</p>
+    </div>
+  )
+}
+
+// ── Custom Tooltip for VLAN charts ──
+function VlanTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-lg border border-border/50 bg-background/95 backdrop-blur-md px-3 py-2 shadow-xl">
+      <p className="text-xs font-medium text-muted-foreground mb-1">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2 text-xs">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.stroke }} />
+          <span className="font-mono font-bold" style={{ color: p.stroke }}>
+            {p.value.toFixed(1)} Mbps
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Main Component ──
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsStats | null>(null)
-  const [graphData, setGraphData] = useState<GraphDataPoint[]>([])
   const [loading, setLoading] = useState(true)
-  const [topConsumers, setTopConsumers] = useState<any[]>([])
-  const [consumersLoading, setConsumersLoading] = useState(true)
-  const [consumersTimeout, setConsumersTimeout] = useState(false)
-  const [revenue, setRevenue] = useState({ expected: 0, collected: 0, collected_field: 0, collected_office: 0, collected_today: 0, outstanding: 0 })
+  const [revenue, setRevenue] = useState({
+    expected: 0,
+    collected: 0,
+    collected_field: 0,
+    collected_office: 0,
+    collected_today: 0,
+    outstanding: 0,
+  })
   const [errorCount, setErrorCount] = useState(0)
+  const [recentLogs, setRecentLogs] = useState<LogEntry[]>([])
+  const [paymentTrend, setPaymentTrend] = useState<PaymentDayData[]>([])
 
   // VLAN uplink state
-  const [vlanLive, setVlanLive] = useState<Record<string, { rx_mbps: number; tx_mbps: number }>>({})
-  const [vlanHistory, setVlanHistory] = useState<Record<string, { time: string; rx: number; tx: number }[]>>(() => {
+  const [vlanLive, setVlanLive] = useState<
+    Record<string, { rx_mbps: number; tx_mbps: number }>
+  >({})
+  const [vlanHistory, setVlanHistory] = useState<
+    Record<string, { time: string; rx: number; tx: number }[]>
+  >(() => {
     const init: Record<string, { time: string; rx: number; tx: number }[]> = {}
-    DASHBOARD_VLANS.forEach(v => { init[v.name] = [] })
+    DASHBOARD_VLANS.forEach((v) => {
+      init[v.name] = []
+    })
     return init
   })
-  
+
+  // Sweeper status
+  const [sweeperStatus, setSweeperStatus] = useState<string>("Checking...")
+
   const bandwidthPollRef = useRef<NodeJS.Timeout | null>(null)
   const analyticsPollRef = useRef<NodeJS.Timeout | null>(null)
-  const topConsumersPollRef = useRef<NodeJS.Timeout | null>(null)
   const revenuePollRef = useRef<NodeJS.Timeout | null>(null)
   const vlanPollRef = useRef<NodeJS.Timeout | null>(null)
 
-  // ── Fetch Throughput Stats (1s polling) ──
+  // ── Fetch Throughput Stats (2s polling) ──
   const fetchThroughput = async () => {
     try {
       const res = await fetch("/api/mikrotik/dashboard")
       if (!res.ok) {
-        setErrorCount(prev => prev + 1)
+        setErrorCount((prev) => prev + 1)
         return
       }
       const data = await res.json()
-
-      const newStats: DashboardStats = data.stats
-      setStats(newStats)
+      setStats(data.stats)
       setErrorCount(0)
-
-      // Add to graph data
-      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      setGraphData(prev => {
-        const newData = [...prev, { 
-          time: now, 
-          wan1_rx: newStats.traffic.wan1.rx, 
-          wan1_tx: newStats.traffic.wan1.tx,
-          wan2_rx: newStats.traffic.wan2.rx,
-          wan2_tx: newStats.traffic.wan2.tx
-        }]
-        return newData.slice(-30) 
-      })
     } catch (err: any) {
       console.error("Bandwidth Poll Error:", err)
-      setErrorCount(prev => prev + 1)
+      setErrorCount((prev) => prev + 1)
     } finally {
       if (loading && stats) setLoading(false)
     }
@@ -182,25 +203,6 @@ export default function DashboardPage() {
       console.error("Analytics fetch fail", err)
     } finally {
       setLoading(false)
-    }
-  }
-
-  // ── Fetch Top Consumers (60s polling) ──
-  const fetchTopConsumers = async () => {
-    const timer = setTimeout(() => setConsumersTimeout(true), 5000)
-    try {
-      const res = await fetch("/api/analytics/top-consumers")
-      if (!res.ok) return
-      const data = await res.json()
-      if (data.success) {
-        setTopConsumers(data.top_consumers || [])
-        setConsumersTimeout(false) // Reset if we got data
-      }
-    } catch (err) {
-      console.error("Top consumers fetch fail", err)
-    } finally {
-      clearTimeout(timer)
-      setConsumersLoading(false)
     }
   }
 
@@ -221,466 +223,728 @@ export default function DashboardPage() {
   // ── Fetch VLAN Uplinks (2s polling) ──
   const fetchVlanLive = useCallback(async () => {
     try {
-      const res = await fetch('/api/mikrotik/uplink-live', { cache: 'no-store' })
+      const res = await fetch("/api/mikrotik/uplink-live", { cache: "no-store" })
       if (!res.ok) return
       const json = await res.json()
       if (!json.success) return
-      const vlans: Record<string, { rx_mbps: number; tx_mbps: number }> = json.vlans || {}
+      const vlans: Record<string, { rx_mbps: number; tx_mbps: number }> =
+        json.vlans || {}
       setVlanLive(vlans)
-      const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      setVlanHistory(prev => {
+      const now = new Date().toLocaleTimeString("en-US", {
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+      setVlanHistory((prev) => {
         const next = { ...prev }
-        DASHBOARD_VLANS.forEach(v => {
-          const point = { time: now, rx: vlans[v.name]?.rx_mbps ?? 0, tx: vlans[v.name]?.tx_mbps ?? 0 }
+        DASHBOARD_VLANS.forEach((v) => {
+          const point = {
+            time: now,
+            rx: vlans[v.name]?.rx_mbps ?? 0,
+            tx: vlans[v.name]?.tx_mbps ?? 0,
+          }
           const arr = [...(next[v.name] || []), point]
           next[v.name] = arr.slice(-MAX_VLAN_POINTS)
         })
         return next
       })
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
   }, [])
+
+  // ── Fetch Recent Logs (one-shot + 30s polling) ──
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch("/api/logs?limit=5")
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.success) {
+        setRecentLogs(data.data || [])
+      }
+    } catch {
+      /* silent */
+    }
+  }
+
+  // ── Fetch Payment 7-Day Trend (one-shot + 60s polling) ──
+  const fetchPaymentTrend = async () => {
+    try {
+      const res = await fetch("/api/collections")
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.success && Array.isArray(data.data)) {
+        // Group by day for the last 7 days
+        const today = new Date()
+        const dayMap: Record<string, number> = {}
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date(today)
+          d.setDate(d.getDate() - i)
+          const key = d.toLocaleDateString("en-US", { weekday: "short" })
+          dayMap[key] = 0
+        }
+        data.data.forEach((p: any) => {
+          const payDate = new Date(p.created_at)
+          const key = payDate.toLocaleDateString("en-US", { weekday: "short" })
+          if (dayMap[key] !== undefined) {
+            dayMap[key] += parseFloat(p.amount) || 0
+          }
+        })
+        setPaymentTrend(
+          Object.entries(dayMap).map(([day, amount]) => ({ day, amount: Math.round(amount) }))
+        )
+      }
+    } catch {
+      /* silent */
+    }
+  }
+
+  // ── Fetch Sweeper Status ──
+  const fetchSweeperStatus = async () => {
+    try {
+      const res = await fetch("/api/logs?limit=1&search=AUTO_SUSPEND")
+      if (!res.ok) {
+        setSweeperStatus("Unknown")
+        return
+      }
+      const data = await res.json()
+      if (data.success && data.data?.length > 0) {
+        const lastRun = new Date(data.data[0].created_at)
+        setSweeperStatus(
+          `Last Run: ${lastRun.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}`
+        )
+      } else {
+        setSweeperStatus("No runs logged")
+      }
+    } catch {
+      setSweeperStatus("Offline")
+    }
+  }
 
   useEffect(() => {
     fetchThroughput()
     fetchAnalytics()
-    fetchTopConsumers()
     fetchRevenue()
     fetchVlanLive()
+    fetchLogs()
+    fetchPaymentTrend()
+    fetchSweeperStatus()
+
     bandwidthPollRef.current = setInterval(fetchThroughput, 2000)
     analyticsPollRef.current = setInterval(fetchAnalytics, 10000)
-    topConsumersPollRef.current = setInterval(fetchTopConsumers, 60000)
     revenuePollRef.current = setInterval(fetchRevenue, 60000)
     vlanPollRef.current = setInterval(fetchVlanLive, 2000)
+    const logsPoll = setInterval(fetchLogs, 30000)
+    const trendPoll = setInterval(fetchPaymentTrend, 60000)
 
     return () => {
       if (bandwidthPollRef.current) clearInterval(bandwidthPollRef.current)
       if (analyticsPollRef.current) clearInterval(analyticsPollRef.current)
-      if (topConsumersPollRef.current) clearInterval(topConsumersPollRef.current)
       if (revenuePollRef.current) clearInterval(revenuePollRef.current)
       if (vlanPollRef.current) clearInterval(vlanPollRef.current)
+      clearInterval(logsPoll)
+      clearInterval(trendPoll)
     }
   }, [])
 
+  // ── Loading State ──
   if (loading && !stats) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground font-medium">Initializing Dual-WAN Monitor...</p>
+          <div className="relative">
+            <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+            <Loader2 className="h-10 w-10 animate-spin text-emerald-400 relative z-10" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Initializing Command Center</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Synchronizing uplink telemetry...
+            </p>
+          </div>
         </div>
       </div>
     )
   }
 
-  const cards = [
-    {
-      title: "Total Subscribers",
-      value: analytics?.total ?? 0,
-      icon: Users,
-      description: "Database census",
-      color: "text-foreground"
-    },
-    {
-      title: "Online Users",
-      value: analytics?.online ?? 0,
-      icon: Wifi,
-      description: "Active sessions",
-      color: "text-emerald-500",
-      pulse: true
-    },
-    {
-      title: "Offline",
-      value: analytics?.offline ?? 0,
-      icon: Activity,
-      description: "Inactive accounts",
-      color: "text-slate-400"
-    },
-    {
-      title: "Deactivated",
-      value: analytics?.deactivated ?? 0,
-      icon: ShieldAlert,
-      description: "Disabled secrets",
-      color: "text-red-500"
-    },
-    {
-      title: "Load Factor",
-      value: `${analytics?.load_factor ?? 0} Mbps`,
-      icon: Zap,
-      description: "Throughput per user",
-      color: "text-amber-600"
-    }
-  ]
-
-  const pieData = analytics ? [
-    { name: "Online", value: analytics.online, color: "#10b981" },
-    { name: "Offline", value: analytics.offline, color: "#94a3b8" },
-    { name: "Deactivated", value: analytics.deactivated, color: "#ef4444" },
-  ] : []
+  const onlineUsers = analytics?.online ?? 0
+  const offlineUsers = analytics?.offline ?? 0
+  const totalUsers = analytics?.total ?? 0
+  const suspendedUsers = analytics?.deactivated ?? 0
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
-          <p className="text-muted-foreground">
-            Multi-Source Statistics: MikroTik & Supabase Sync
-          </p>
+    <div className="flex flex-col gap-0 -m-4 md:-m-6 lg:-m-8">
+      {/* ═══ TOP COMMAND BAR ══════════════════════════════════════════════ */}
+      <div className="flex items-center justify-between px-4 md:px-6 py-4 bg-muted/20">
+        <div className="flex items-center gap-3">
+          <Radio className="h-4 w-4 text-muted-foreground" />
+          <h1 className="text-base sm:text-lg font-bold tracking-tight text-muted-foreground">
+            <span className="font-medium opacity-70">Purrfect Universe</span>{" "}
+            <span>Command Center</span>
+          </h1>
+          {errorCount > 0 && (
+            <Badge
+              variant="destructive"
+              className="h-5 px-2 gap-1 text-xs font-bold uppercase animate-pulse"
+            >
+              <AlertTriangle className="h-3 w-3" />
+              ERR ({errorCount})
+            </Badge>
+          )}
         </div>
-        {errorCount > 0 && (
-          <Badge variant="destructive" className="h-7 px-3 gap-2 text-xs font-semibold uppercase animate-pulse">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            INTERFACE ERROR ({errorCount})
+      </div>
+
+      {/* ═══ MAIN GRID CONTENT ════════════════════════════════════════ */}
+      <div className="p-3 md:p-5 lg:p-6 flex flex-col gap-4">
+
+        {/* ── System Status Inline Bar ────────────────────────────── */}
+        <div className="flex items-center gap-3 flex-wrap rounded-lg border border-border/20 bg-card/40 backdrop-blur-sm px-4 py-2">
+          <Badge variant="outline" className="gap-1.5 h-6 border-emerald-500/30 bg-emerald-500/5 text-emerald-400 text-xs font-semibold">
+            <div className="relative">
+              <div className="h-2 w-2 rounded-full bg-emerald-400" />
+              <div className="absolute inset-0 h-2 w-2 rounded-full bg-emerald-400/50 animate-ping" />
+            </div>
+            System Online
           </Badge>
-        )}
-      </div>
+          
+          <Separator orientation="vertical" className="h-4 bg-border/50 hidden sm:block" />
 
-      {/* Revenue Snapshot Row */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-         <Card className="shadow-none border border-blue-200 bg-blue-50/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Expected Collection</CardTitle>
-               <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                  <Database className="h-4 w-4 text-blue-600" />
-               </div>
-            </CardHeader>
-            <CardContent>
-               <div className="text-3xl font-bold text-blue-600">৳ {(revenue.expected || 0).toLocaleString()}</div>
-               <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-blue-500" /> Monthly dues for active accounts
-               </p>
-            </CardContent>
-         </Card>
+          <Badge variant="outline" className="gap-1.5 h-6 border-border/30 text-xs font-mono">
+            <Cpu className="h-3 w-3 text-blue-400" />
+            CPU {stats?.cpu_load ?? 0}%
+          </Badge>
+          <Badge variant="outline" className="gap-1.5 h-6 border-border/30 text-xs font-mono">
+            <MemoryStick className="h-3 w-3 text-violet-400" />
+            MEM {stats?.mem_usage ?? 0}%
+          </Badge>
+          <Badge variant="outline" className="gap-1.5 h-6 border-border/30 text-xs font-mono">
+            <Timer className="h-3 w-3 text-amber-400" />
+            {stats?.uptime ?? "—"}
+          </Badge>
 
-         <Card className="shadow-none border border-emerald-200 bg-emerald-50/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Collected This Month</CardTitle>
-               <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <DollarSign className="h-4 w-4 text-emerald-600" />
-               </div>
-            </CardHeader>
-            <CardContent>
-               <div className="text-3xl font-bold text-emerald-600">৳ {revenue.collected.toLocaleString()}</div>
-               <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> 
-                  (F: ৳ {revenue.collected_field?.toLocaleString() || 0} | O: ৳ {revenue.collected_office?.toLocaleString() || 0})
-               </p>
-            </CardContent>
-         </Card>
+          <Separator orientation="vertical" className="h-4 bg-border/50 hidden sm:block" />
 
-         <Card className="shadow-none border border-violet-200 bg-violet-50/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-violet-600">Today's Collection</CardTitle>
-               <div className="h-8 w-8 rounded-full bg-violet-100 flex items-center justify-center">
-                  <Zap className="h-4 w-4 text-violet-600" />
-               </div>
-            </CardHeader>
-            <CardContent>
-               <div className="text-3xl font-bold text-violet-600">৳ {revenue.collected_today?.toLocaleString() || 0}</div>
-               <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
-                  <Activity className="h-3.3 w-3.3 text-violet-500" /> Real-time daily earnings
-               </p>
-            </CardContent>
-         </Card>
+          <Badge variant="outline" className="gap-1.5 h-6 border-border/30 text-xs font-mono">
+            <Server className="h-3 w-3 text-emerald-400" />
+            Sweeper: {sweeperStatus}
+          </Badge>
+        </div>
 
-         <Card className="shadow-none border border-red-200 bg-red-50/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-[10px] font-bold uppercase tracking-widest text-red-600">Total Outstanding</CardTitle>
-               <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
-                  <AlertTriangle className="h-4 w-4 text-red-600" />
-               </div>
-            </CardHeader>
-            <CardContent>
-               <div className="text-3xl font-bold text-red-600">৳ {revenue.outstanding.toLocaleString()}</div>
-               <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
-                  <Activity className="h-3.3 w-3.3" /> Potential revenue from overdue users
-               </p>
-            </CardContent>
-         </Card>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        {cards.map((card) => (
-          <Card key={card.title} className="shadow-none border border-border/60">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {card.title}
+        {/* ── Row 1: THE PULSE — 5 KPI Cards ─────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          {/* KPI 1: Online Status */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-500/60 to-transparent" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
+              <CardTitle className="text-sm font-medium">
+                Online Status
               </CardTitle>
-              <card.icon className={cn("h-4 w-4 text-muted-foreground", card.pulse && "animate-pulse text-emerald-500")} />
+              <Signal className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-              <div className={cn("text-2xl font-bold", card.color)}>
-                {card.value}
+            <CardContent className="px-4 pb-3">
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-foreground tabular-nums">
+                  {onlineUsers}
+                </span>
+                <Badge variant="outline" className="border-emerald-500/20 text-emerald-500 bg-emerald-500/5 text-[11px] h-5 opacity-80">online</Badge>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {card.description}
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-xl font-bold text-muted-foreground tabular-nums">
+                  {offlineUsers}
+                </span>
+                <Badge variant="outline" className="border-slate-500/20 text-muted-foreground bg-slate-500/5 text-[11px] h-5 opacity-80">offline</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* KPI 2: Subscribers */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
+              <CardTitle className="text-sm font-medium">
+                Total Subscribers
+              </CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="text-3xl font-bold text-foreground tabular-nums">
+                {totalUsers}
+              </div>
+              <div className="flex items-center gap-2 mt-1.5 opacity-80">
+                <Badge variant="outline" className="border-blue-500/20 text-blue-500 bg-blue-500/5 text-[11px] h-5 gap-1">
+                  <UserCheck className="h-3 w-3" /> {totalUsers - suspendedUsers} active
+                </Badge>
+                <Separator orientation="vertical" className="h-3 bg-border/50" />
+                <Badge variant="outline" className="border-red-500/20 text-red-500 bg-red-500/5 text-[11px] h-5 gap-1">
+                  <UserX className="h-3 w-3" /> {suspendedUsers} suspended
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* KPI 3: Monthly Target */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-violet-500/60 to-transparent" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
+              <CardTitle className="text-sm font-medium">
+                Monthly Target
+              </CardTitle>
+              <Target className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="text-3xl font-bold text-foreground tabular-nums">
+                ৳ {(revenue.expected || 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground/70 mt-1.5 flex items-center gap-1">
+                <Clock className="h-3 w-3 opacity-70" />
+                Expected for current cycle
               </p>
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      {/* ── Core VLAN Uplinks ── */}
-      <div>
-        <div className="flex items-center gap-3 mb-3">
-          <div className="p-1.5 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-lg border border-indigo-500/20">
-            <Zap className="h-4 w-4 text-indigo-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold tracking-tight">Core VLAN Uplinks</h3>
-            <p className="text-[10px] text-muted-foreground">Live bandwidth · 2s polling</p>
-          </div>
-          <Badge variant="outline" className="ml-auto text-[10px] border-emerald-500/50 text-emerald-400 bg-emerald-500/10 h-5">
-            <Activity className="h-2.5 w-2.5 mr-1 animate-pulse" />
-            Live
-          </Badge>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {DASHBOARD_VLANS.map(vlan => {
-            const data = vlanHistory[vlan.name] || []
-            const current = vlanLive[vlan.name]
-            const rx = current?.rx_mbps ?? 0
-            const tx = current?.tx_mbps ?? 0
-            return (
-              <Card key={vlan.name} className="relative overflow-hidden shadow-none border-border/50 bg-card/50 group hover:border-border/80 transition-colors">
-                <div className="absolute top-0 left-0 right-0 h-[2px] opacity-60 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(90deg, transparent, ${vlan.color}, transparent)` }} />
-                <CardHeader className="pb-1 pt-3 px-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xs font-semibold flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: vlan.color }} />
-                      {vlan.name}
-                    </CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="flex items-center gap-0.5 text-[10px]">
-                      <ArrowDown className="h-2.5 w-2.5 text-emerald-400" />
-                      <span className="font-mono font-bold text-emerald-400">{rx.toFixed(1)}</span>
-                    </span>
-                    <span className="flex items-center gap-0.5 text-[10px]">
-                      <ArrowUp className="h-2.5 w-2.5 text-blue-400" />
-                      <span className="font-mono font-bold text-blue-400">{tx.toFixed(1)}</span>
-                    </span>
-                    <span className="text-[9px] text-muted-foreground">Mbps</span>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-1 pb-1 pt-0">
-                  <div className="h-[60px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={data} margin={{ top: 2, right: 2, left: -24, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id={`dg-rx-${vlan.name}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id={`dg-tx-${vlan.name}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="time" hide />
-                        <YAxis tick={{ fontSize: 8 }} tickLine={false} axisLine={false} />
-                        <Area type="monotone" dataKey="rx" stroke="#10b981" strokeWidth={1.5} fill={`url(#dg-rx-${vlan.name})`} dot={false} isAnimationActive={false} />
-                        <Area type="monotone" dataKey="tx" stroke="#3b82f6" strokeWidth={1} fill={`url(#dg-tx-${vlan.name})`} dot={false} isAnimationActive={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-12">
-        {/* Main Dual-WAN Bandwidth Graph - Takes up 8 cols */}
-        <Card className="lg:col-span-8 shadow-none border border-border/60">
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6">
-                <div className="space-y-1">
-                    <CardTitle className="text-lg font-medium">Throughput Analytics</CardTitle>
-                    <CardDescription>Live real-time concurrency · 1s frequency</CardDescription>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 sm:mt-0 text-xs">
-                    <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-[hsl(var(--chart-1))]" />
-                        <span className="font-medium">WAN1 RX: <span className="font-bold">{stats?.traffic.wan1.rx.toFixed(2)} M</span></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="h-2 w-2 rounded-full bg-[hsl(var(--chart-3))]" />
-                        <span className="font-medium">WAN2 RX: <span className="font-bold">{stats?.traffic.wan2.rx.toFixed(2)} M</span></span>
-                    </div>
-                </div>
+          {/* KPI 4: Actual Vault */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
+              <CardTitle className="text-sm font-medium">
+                Actual Vault
+              </CardTitle>
+              <Wallet className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
-                <ChartContainer config={bandwidthChartConfig} className="h-[400px] w-full">
-                    <AreaChart data={graphData} accessibilityLayer>
-                        <defs>
-                            <linearGradient id="colorWan1Rx" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="var(--color-wan1_rx)" stopOpacity={0.2}/>
-                                <stop offset="95%" stopColor="var(--color-wan1_rx)" stopOpacity={0}/>
-                            </linearGradient>
-                            <linearGradient id="colorWan2Rx" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="var(--color-wan2_rx)" stopOpacity={0.2}/>
-                                <stop offset="95%" stopColor="var(--color-wan2_rx)" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                        <XAxis dataKey="time" hide={true} />
-                        <YAxis 
-                            orientation="right"
-                            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                            tickFormatter={(val) => `${val}M`}
-                            domain={[0, 'auto']}
-                            axisLine={false}
-                            tickLine={false}
-                        />
-                        <ChartTooltip content={<ChartTooltipContent indicator="line" />} />
-                        <Area 
-                            type="monotone" 
-                            dataKey="wan1_rx" 
-                            stroke="var(--color-wan1_rx)" 
-                            strokeWidth={2}
-                            fillOpacity={1} 
-                            fill="url(#colorWan1Rx)" 
-                            name="WAN1 Download" 
-                            isAnimationActive={false}
-                        />
-                        <Area 
-                            type="monotone" 
-                            dataKey="wan2_rx" 
-                            stroke="var(--color-wan2_rx)" 
-                            strokeWidth={2}
-                            fillOpacity={1} 
-                            fill="url(#colorWan2Rx)" 
-                            name="WAN2 Download" 
-                            isAnimationActive={false}
-                        />
-                    </AreaChart>
-                </ChartContainer>
-            </CardContent>
-        </Card>
-
-        {/* Status Distribution - Takes up 4 cols */}
-        <Card className="lg:col-span-4 shadow-none border border-border/60">
-          <CardHeader>
-            <CardTitle className="text-lg font-medium">Status Distribution</CardTitle>
-            <CardDescription>Network health overview</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center">
-            <ChartContainer config={statusChartConfig} className="aspect-square w-full max-h-[250px]">
-              <PieChart>
-                <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                <Pie
-                  data={pieData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={60}
-                  outerRadius={80}
-                  strokeWidth={5}
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ChartContainer>
-            <div className="grid grid-cols-1 gap-2 w-full mt-4">
-               {pieData.map((item) => (
-                 <div key={item.name} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-md hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-2">
-                        <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="font-medium text-muted-foreground">{item.name}</span>
-                    </div>
-                    <span className="font-bold">{item.value}</span>
-                 </div>
-               ))}
-            </div>
-          </CardContent>
-          <CardFooter className="flex-col gap-2 pt-4 border-t text-sm font-medium">
-            <div className="flex items-center justify-between w-full">
-                <span>Healthy Connect</span>
-                <span className="text-emerald-600 flex items-center">
-                    {( (analytics?.online || 0) / Math.max(1, analytics?.total || 1) * 100).toFixed(1)}%
-                    <ArrowUpRight className="h-3 w-3 ml-1" />
-                </span>
-            </div>
-          </CardFooter>
-        </Card>
-
-        {/* Top Subscribers Leaderboard */}
-        <Card className="shadow-none border border-border/60">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold flex items-center justify-between">
-              Top Subscribers
-              <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground py-0 h-5">
-                Current Month
-              </Badge>
-            </CardTitle>
-            <CardDescription className="text-[10px]">Heaviest data consumers in GB</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-2">
-              <div className="flex flex-col gap-3">
-                {topConsumers.length > 0 ? topConsumers.map((user, idx) => (
-                  <div key={user.username} className="flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                       <div className="h-6 w-6 rounded bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                          #{idx + 1}
-                       </div>
-                       <span className="text-sm font-medium tracking-tight">{user.username}</span>
-                    </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                       <span className="text-sm font-bold">{user.totalGB} <span className="text-[10px] font-normal text-muted-foreground">GB</span></span>
-                       <Progress 
-                          value={(user.totalGB / (topConsumers[0]?.totalGB || 1)) * 100} 
-                          className="h-1 w-20 bg-muted rounded-full"
-                       />
-                    </div>
-                  </div>
-                )) : consumersLoading && !consumersTimeout ? (
-                   <div className="py-8 flex flex-col items-center justify-center opacity-40 italic">
-                      <RefreshCcw className="h-5 w-5 mb-2 animate-spin" />
-                      <p className="text-[10px]">Analyzing usage logs...</p>
-                   </div>
-                ) : (
-                  <div className="py-8 flex flex-col items-center justify-center opacity-40 italic">
-                    <Database className="h-5 w-5 mb-2" />
-                    <p className="text-[10px] font-medium">Logging in progress...</p>
-                    <p className="text-[9px] text-center mt-1">(Data will appear after the first hourly sync)</p>
-                  </div>
-                )}
+            <CardContent className="px-4 pb-3">
+              <div className="text-3xl font-bold text-foreground tabular-nums">
+                ৳ {revenue.collected.toLocaleString()}
               </div>
-          </CardContent>
-        </Card>
-
-        {/* System Health Cards (Bottom Row) */}
-        <Card className="lg:col-span-12 shadow-none border border-border/60">
-            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-6 py-6 items-center">
-                <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">CPU Load</p>
-                    <div className="flex flex-col gap-2">
-                        <span className="text-xl font-bold">{stats?.cpu_load}%</span>
-                        <Progress value={stats?.cpu_load || 0} className="h-1.5" />
-                    </div>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Router Memory</p>
-                    <div className="flex flex-col gap-2">
-                        <span className="text-xl font-bold">{stats?.mem_usage}%</span>
-                        <Progress value={stats?.mem_usage || 0} className="h-1.5 bg-blue-500/20" />
-                    </div>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">System Uptime</p>
-                    <div className="text-xl font-bold">{stats?.uptime}</div>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Router Status</p>
-                    <div className="flex items-center gap-1.5 text-xl font-bold text-emerald-600">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                        Synced
-                    </div>
-                </div>
+              <div className="flex items-center gap-2 mt-1.5 opacity-80">
+                <Badge variant="outline" className="border-amber-500/20 text-amber-500 bg-amber-500/5 text-[11px] h-5">
+                  Field: <strong className="ml-1 opacity-80">৳{revenue.collected_field?.toLocaleString() || 0}</strong>
+                </Badge>
+                <Separator orientation="vertical" className="h-3 bg-border/50" />
+                <Badge variant="outline" className="border-violet-500/20 text-violet-500 bg-violet-500/5 text-[11px] h-5">
+                  Office: <strong className="ml-1 opacity-80">৳{revenue.collected_office?.toLocaleString() || 0}</strong>
+                </Badge>
+              </div>
             </CardContent>
-        </Card>
+          </Card>
+
+          {/* KPI 5: Due Bills */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-red-500/60 to-transparent" />
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pt-4 px-6">
+              <CardTitle className="text-sm font-medium">
+                Due Bills
+              </CardTitle>
+              <ShieldOff className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="text-3xl font-bold text-foreground tabular-nums">
+                ৳ {revenue.outstanding.toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground/70 mt-1.5 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3 opacity-70" />
+                Outstanding from overdue
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Row 2: THE TELEMETRY — Charts ──────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Left: Core Uplinks (2/3 width) */}
+          <Card className="lg:col-span-2 relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500/50 via-emerald-500/50 to-amber-500/50" />
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Cable className="h-4 w-4 text-muted-foreground mr-2" />
+                  <div>
+                    <CardTitle className="text-sm font-bold tracking-tight">
+                      Core Uplinks
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground/60">
+                      Live VLAN bandwidth · 2s refresh
+                    </p>
+                  </div>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="text-[10px] border-emerald-500/40 text-emerald-400 bg-emerald-500/10 h-5 gap-1"
+                >
+                  <Activity className="h-2.5 w-2.5 animate-pulse" />
+                  LIVE
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="px-3 pb-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {DASHBOARD_VLANS.map((vlan) => {
+                  const data = vlanHistory[vlan.name] || []
+                  const current = vlanLive[vlan.name]
+                  const rx = current?.rx_mbps ?? 0
+                  const tx = current?.tx_mbps ?? 0
+                  return (
+                    <div
+                      key={vlan.name}
+                      className="relative overflow-hidden rounded-lg border border-border/20 bg-background/40 backdrop-blur-sm group hover:border-border/40 transition-all"
+                    >
+                      <div
+                        className="absolute top-0 left-0 right-0 h-[1.5px] opacity-50 group-hover:opacity-100 transition-opacity"
+                        style={{
+                          background: `linear-gradient(90deg, transparent, ${vlan.color}, transparent)`,
+                        }}
+                      />
+                      <div className="px-3 pt-2.5 pb-1">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline" className="gap-1.5 h-6 border-border/30 bg-background/50 text-sm font-bold px-2">
+                            <span
+                              className="w-2 h-2 rounded-full animate-pulse"
+                              style={{ background: vlan.color }}
+                            />
+                            {vlan.label}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <span className="flex items-center gap-1 text-sm">
+                            <ArrowDown className="h-3.5 w-3.5 text-emerald-400" />
+                            <span className="font-mono font-bold text-emerald-400 text-base">
+                              {rx.toFixed(1)}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-1 text-sm">
+                            <ArrowUp className="h-3.5 w-3.5 text-blue-400" />
+                            <span className="font-mono font-bold text-blue-400 text-base">
+                              {tx.toFixed(1)}
+                            </span>
+                          </span>
+                          <span className="text-xs text-muted-foreground/50">
+                            Mbps
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-[100px] px-0.5">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart
+                            data={data}
+                            margin={{ top: 2, right: 2, left: -24, bottom: 0 }}
+                          >
+                            <defs>
+                              <linearGradient
+                                id={`cc-rx-${vlan.name}`}
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="5%"
+                                  stopColor={vlan.color}
+                                  stopOpacity={0.35}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor={vlan.color}
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                              <linearGradient
+                                id={`cc-tx-${vlan.name}`}
+                                x1="0"
+                                y1="0"
+                                x2="0"
+                                y2="1"
+                              >
+                                <stop
+                                  offset="5%"
+                                  stopColor="#3b82f6"
+                                  stopOpacity={0.15}
+                                />
+                                <stop
+                                  offset="95%"
+                                  stopColor="#3b82f6"
+                                  stopOpacity={0}
+                                />
+                              </linearGradient>
+                            </defs>
+                            <XAxis dataKey="time" hide />
+                            <YAxis
+                              tick={{ fontSize: 7 }}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <RechartsTooltip content={<VlanTooltip />} />
+                            <Area
+                              type="monotone"
+                              dataKey="rx"
+                              stroke={vlan.color}
+                              strokeWidth={1.5}
+                              fill={`url(#cc-rx-${vlan.name})`}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey="tx"
+                              stroke="#3b82f6"
+                              strokeWidth={1}
+                              fill={`url(#cc-tx-${vlan.name})`}
+                              dot={false}
+                              isAnimationActive={false}
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Right: Revenue Velocity */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500/60 to-transparent" />
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <BarChart3 className="h-4 w-4 text-muted-foreground mr-2" />
+                  <div>
+                    <CardTitle className="text-sm font-bold tracking-tight">
+                      Revenue Velocity
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground/60">
+                      Last 7 days · cash flow trend
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground/50">Today</p>
+                  <p className="text-sm font-bold text-amber-400 font-mono tabular-nums drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]">
+                    ৳{revenue.collected_today?.toLocaleString() || 0}
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="px-3 pb-3 pt-1">
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={paymentTrend} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.9} />
+                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.4} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="hsl(var(--border))"
+                      strokeOpacity={0.3}
+                    />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                    />
+                    <RechartsTooltip content={<RevenueTooltip />} />
+                    <Bar
+                      dataKey="amount"
+                      fill="url(#barGrad)"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={36}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Row 3: THE ACTION CENTER ─────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Left: Recent Activity */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/60 to-transparent" />
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <ScrollText className="h-4 w-4 text-muted-foreground mr-2" />
+                  <div>
+                    <CardTitle className="text-sm font-bold tracking-tight">
+                      Recent Activity
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground/60">
+                      Last 5 system events
+                    </p>
+                  </div>
+                </div>
+                <Link href="/logs">
+                  <Badge
+                    variant="outline"
+                    className="text-[11px] border-cyan-500/30 text-cyan-400 bg-cyan-500/5 h-5 cursor-pointer hover:bg-cyan-500/10 transition-colors"
+                  >
+                    View All →
+                  </Badge>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 pt-1">
+              {recentLogs.length > 0 ? (
+                <div className="flex flex-col gap-0">
+                  {recentLogs.map((log, i) => {
+                    const isPayment = log.action_type === "PAYMENT_LOGGED"
+                    const isSuspend = log.action_type === "AUTO_SUSPEND"
+                    const isReactivate = log.action_type === "REACTIVATION"
+
+                    return (
+                      <div
+                        key={log.id}
+                        className={cn(
+                          "flex items-start gap-3 py-2.5 transition-colors",
+                          i < recentLogs.length - 1 && "border-b border-border/10"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "h-6 w-6 rounded-md flex items-center justify-center shrink-0 mt-0.5",
+                            isPayment && "bg-emerald-500/10 ring-1 ring-emerald-500/20",
+                            isSuspend && "bg-red-500/10 ring-1 ring-red-500/20",
+                            isReactivate && "bg-blue-500/10 ring-1 ring-blue-500/20",
+                            !isPayment && !isSuspend && !isReactivate &&
+                              "bg-muted/50 ring-1 ring-border/20"
+                          )}
+                        >
+                          {isPayment && (
+                            <DollarSign className="h-3 w-3 text-emerald-400" />
+                          )}
+                          {isSuspend && (
+                            <ShieldAlert className="h-3 w-3 text-red-400" />
+                          )}
+                          {isReactivate && (
+                            <CheckCircle2 className="h-3 w-3 text-blue-400" />
+                          )}
+                          {!isPayment && !isSuspend && !isReactivate && (
+                            <Activity className="h-3 w-3 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-foreground truncate">
+                              {log.target_user || "System"}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground/50 font-mono shrink-0">
+                              {new Date(log.created_at).toLocaleTimeString(
+                                "en-US",
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                }
+                              )}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground/60 truncate">
+                            {log.description || log.action_type}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="py-10 flex flex-col items-center justify-center text-muted-foreground/40">
+                  <Terminal className="h-6 w-6 mb-2" />
+                  <p className="text-xs font-medium">No recent events</p>
+                  <p className="text-[11px] mt-0.5">System logs will appear here</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right: Quick Controls */}
+          <Card className="relative overflow-hidden shadow-none border-border/30 bg-card/60 backdrop-blur-md">
+            <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-purple-500/60 to-transparent" />
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center gap-2.5">
+                <Command className="h-4 w-4 text-muted-foreground mr-2" />
+                <div>
+                  <CardTitle className="text-sm font-bold tracking-tight">
+                    Quick Controls
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground/60">
+                    Immediate actions
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <Link href="/users?action=new" className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 transition-all group"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center ring-1 ring-emerald-500/20 group-hover:bg-emerald-500/20 group-hover:ring-emerald-500/40 group-hover:shadow-[0_0_20px_rgba(52,211,153,0.15)] transition-all">
+                      <UserPlus className="h-5 w-5 text-emerald-400" />
+                    </div>
+                    <span className="text-xs font-bold tracking-wide">
+                      Add New User
+                    </span>
+                  </Button>
+                </Link>
+
+                <Link href="/collections" className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-amber-500/10 hover:border-amber-500/30 hover:text-amber-400 transition-all group"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center ring-1 ring-amber-500/20 group-hover:bg-amber-500/20 group-hover:ring-amber-500/40 group-hover:shadow-[0_0_20px_rgba(251,191,36,0.15)] transition-all">
+                      <CreditCard className="h-5 w-5 text-amber-400" />
+                    </div>
+                    <span className="text-xs font-bold tracking-wide">
+                      Log Manual Payment
+                    </span>
+                  </Button>
+                </Link>
+
+                <Link href="/communications" className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-blue-500/10 hover:border-blue-500/30 hover:text-blue-400 transition-all group"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center ring-1 ring-blue-500/20 group-hover:bg-blue-500/20 group-hover:ring-blue-500/40 group-hover:shadow-[0_0_20px_rgba(96,165,250,0.15)] transition-all">
+                      <MessageSquareText className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <span className="text-xs font-bold tracking-wide">
+                      Broadcast SMS
+                    </span>
+                  </Button>
+                </Link>
+
+                <Link href="/staff" className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full h-auto py-4 flex flex-col items-center gap-2.5 border-border/30 bg-background/30 hover:bg-violet-500/10 hover:border-violet-500/30 hover:text-violet-400 transition-all group"
+                  >
+                    <div className="h-10 w-10 rounded-xl bg-violet-500/10 flex items-center justify-center ring-1 ring-violet-500/20 group-hover:bg-violet-500/20 group-hover:ring-violet-500/40 group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)] transition-all">
+                      <ContactRound className="h-5 w-5 text-violet-400" />
+                    </div>
+                    <span className="text-xs font-bold tracking-wide">
+                      Add Staff
+                    </span>
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )

@@ -297,3 +297,20 @@ model SystemSettings {
 
   @@map("system_settings")
 }
+
+// 11. 'router_configs' Table (Dynamic VLAN Configs)
+model RouterConfig {
+  id           String   @id @default(uuid()) @db.Uuid
+  vlanIig      Int?     @map("vlan_iig")
+  vlanBdix     Int?     @map("vlan_bdix")
+  vlanGgc      Int?     @map("vlan_ggc")
+  vlanFacebook Int?     @map("vlan_facebook")
+  vlanFtp      Int?     @map("vlan_ftp")
+
+  isActive     Boolean  @default(true) @map("is_active")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("router_configs")
+}
