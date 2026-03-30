@@ -121,6 +121,31 @@ export default function UsersPage() {
   const [selectedForPayment, setSelectedForPayment] = useState<any>(null)
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
   const [isRecordingPayment, setIsRecordingPayment] = useState(false)
+  const [paymentUnpaidInvoices, setPaymentUnpaidInvoices] = useState<any[]>([])
+  const [targetInvoiceId, setTargetInvoiceId] = useState<string>("auto")
+
+  // Fetch unpaid invoices when payment modal opens
+  useEffect(() => {
+    if (isPaymentModalOpen && selectedForPayment) {
+      const fetchInvoices = async () => {
+        try {
+          const res = await fetch(`/api/customers/${selectedForPayment.id}/billing-history`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.success && data.unpaidInvoices) {
+              setPaymentUnpaidInvoices(data.unpaidInvoices)
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch unpaid invoices", err)
+        }
+      }
+      fetchInvoices()
+    } else {
+      setPaymentUnpaidInvoices([])
+      setTargetInvoiceId("auto")
+    }
+  }, [selectedForPayment, isPaymentModalOpen])
 
   // Pagination & Search State
   const [page, setPage] = useState(1)
@@ -389,7 +414,7 @@ export default function UsersPage() {
   const handleRecordPayment = async (amount: number, method: string, collectedBy: string) => {
     if (!selectedForPayment) return
     setIsRecordingPayment(true)
-    console.log('[DEBUG] Recording Payment:', { customer_id: selectedForPayment.id, amount, method, collected_by: collectedBy })
+    console.log('[DEBUG] Recording Payment:', { customer_id: selectedForPayment.id, amount, method, collected_by: collectedBy, target_invoice_id: targetInvoiceId })
     
     try {
       const res = await fetch("/api/payments", {
@@ -399,7 +424,8 @@ export default function UsersPage() {
           customer_id: selectedForPayment.id,
           amount: parseFloat(amount?.toString() || "0"),
           payment_method: method,
-          collected_by: collectedBy
+          collected_by: collectedBy,
+          target_invoice_id: targetInvoiceId === "auto" ? null : targetInvoiceId
         })
       })
       
@@ -422,18 +448,16 @@ export default function UsersPage() {
   }
 
   const getBillingStatus = (user: any) => {
+    const due = Number(user.due_balance || 0)
+    
+    // If they physically owe no money (0 or advance credit), they are Paid out.
+    if (due <= 0) return 'paid'
+    
     const now = new Date()
     const currentDay = now.getDate()
     const billingDay = user.billing_day || 1
     
-    if (!user.last_payment_date) {
-      return currentDay >= billingDay ? 'overdue' : 'pending'
-    }
-
-    const lpDate = new Date(user.last_payment_date)
-    const isPaidThisMonth = (lpDate.getMonth() === now.getMonth() && lpDate.getFullYear() === now.getFullYear())
-    
-    if (isPaidThisMonth) return 'paid'
+    // If they owe money and their billing day has passed, they are Overdue.
     return currentDay >= billingDay ? 'overdue' : 'pending'
   }
 
@@ -1630,6 +1654,25 @@ export default function UsersPage() {
             </div>
 
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Allocate Payment To:</Label>
+                <Select value={targetInvoiceId} onValueChange={(v) => setTargetInvoiceId(v || "auto")}>
+                   <SelectTrigger>
+                      <SelectValue placeholder="Auto-Allocate (Oldest Debt First)" />
+                   </SelectTrigger>
+                   <SelectContent>
+                      <SelectItem value="auto">Auto-Allocate (Oldest Debt First)</SelectItem>
+                      {paymentUnpaidInvoices.map((inv: any) => {
+                         const remaining = Number(inv.amount_due) - Number(inv.amount_paid)
+                         return (
+                            <SelectItem key={inv.id} value={inv.id}>
+                               {inv.billing_month} - ৳{remaining.toLocaleString()} Remaining
+                            </SelectItem>
+                         )
+                      })}
+                   </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label>Payment Method</Label>
                 <Select defaultValue="Cash" onValueChange={(v) => setSelectedForPayment({ ...selectedForPayment, method: v })}>

@@ -162,6 +162,30 @@ export default function BillingPage() {
   const [selectedUser, setSelectedUser] = useState("")
   const [amount, setAmount] = useState("")
   const [method, setMethod] = useState("")
+  const [targetInvoiceId, setTargetInvoiceId] = useState<string>("auto")
+  const [paymentUnpaidInvoices, setPaymentUnpaidInvoices] = useState<any[]>([])
+
+  useEffect(() => {
+    if (selectedUser) {
+      const fetchInvoices = async () => {
+        try {
+          const res = await fetch(`/api/customers/${selectedUser}/billing-history`)
+          if (res.ok) {
+            const data = await res.json()
+            if (data.success && data.unpaidInvoices) {
+              setPaymentUnpaidInvoices(data.unpaidInvoices)
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch unpaid invoices", err)
+        }
+      }
+      fetchInvoices()
+    } else {
+      setPaymentUnpaidInvoices([])
+      setTargetInvoiceId("auto")
+    }
+  }, [selectedUser])
   
   useEffect(() => {
     // Load staff directly from the new payload
@@ -207,7 +231,8 @@ export default function BillingPage() {
         customer_id: selectedUser,
         amount: parseFloat(amount),
         payment_method: method,
-        collected_by: "Office"
+        collected_by: "Office",
+        target_invoice_id: targetInvoiceId === "auto" ? null : targetInvoiceId
       }
 
       // Hit /api/payments directly to affect Ledger & Due Balance!
@@ -235,6 +260,7 @@ export default function BillingPage() {
       setSelectedUser("")
       setAmount("")
       setMethod("")
+      setTargetInvoiceId("auto")
 
     } catch (e) {
       console.error(e)
@@ -291,6 +317,31 @@ export default function BillingPage() {
                    value={amount}
                    onChange={(e) => setAmount(e.target.value)}
                 />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Allocate Payment To</Label>
+                <Select value={targetInvoiceId} onValueChange={(v) => setTargetInvoiceId(v || "auto")}>
+                   <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Auto-Allocate (Oldest Debt First)">
+                         {targetInvoiceId === "auto" 
+                           ? "Auto-Allocate (Oldest Debt First)"
+                           : (paymentUnpaidInvoices.find(i => i.id === targetInvoiceId)?.billing_month + " - ৳" + 
+                             (Number(paymentUnpaidInvoices.find(i => i.id === targetInvoiceId)?.amount_due) - Number(paymentUnpaidInvoices.find(i => i.id === targetInvoiceId)?.amount_paid)).toLocaleString() + " Remaining") || "Auto-Allocate (Oldest Debt First)"}
+                      </SelectValue>
+                   </SelectTrigger>
+                   <SelectContent>
+                      <SelectItem value="auto">Auto-Allocate (Oldest Debt First)</SelectItem>
+                      {paymentUnpaidInvoices.map((inv: any) => {
+                         const remaining = Number(inv.amount_due) - Number(inv.amount_paid)
+                         return (
+                            <SelectItem key={inv.id} value={inv.id}>
+                               {inv.billing_month} - ৳{remaining.toLocaleString()} Remaining
+                            </SelectItem>
+                         )
+                      })}
+                   </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-2">
@@ -496,7 +547,7 @@ export default function BillingPage() {
                         <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
                               {isPartial && <span className="text-[10px] font-bold text-destructive uppercase tracking-widest bg-destructive/10 px-1.5 py-0.5 rounded">Partial Due</span>}
-                              {isOverpaid && <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded">Credit Setup</span>}
+                              {isOverpaid && <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest bg-emerald-500/10 px-1.5 py-0.5 rounded">Advance Credit</span>}
                               <span className={cn(
                                 "text-sm font-bold font-mono",
                                 rawDue > 0 ? "text-destructive" : "text-emerald-600"

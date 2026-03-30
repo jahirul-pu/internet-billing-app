@@ -326,7 +326,97 @@ export default function UserProfilePage({
                    </Card>
                 </div>
 
-                {/* Ledger Table */}
+                {/* ═══ MONTHS DUE — Invoice Breakdown ═══ */}
+                {billing.unpaidInvoices && billing.unpaidInvoices.length > 0 && (
+                  <Card className="border-red-500/30 bg-red-500/[0.03]">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm flex items-center gap-2 text-red-600">
+                        <CalendarDays className="h-4 w-4" />
+                        Months Due
+                      </CardTitle>
+                      <CardDescription>
+                        Outstanding invoices that require payment
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2">
+                        {billing.unpaidInvoices.map((inv: any) => {
+                          const remaining = Number(inv.amount_due) - Number(inv.amount_paid)
+                          const isPartial = inv.status === 'partial'
+                          return (
+                            <Badge 
+                              key={inv.id} 
+                              variant="outline" 
+                              className={cn(
+                                "px-3 py-1.5 text-sm font-semibold shadow-none",
+                                isPartial 
+                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-700" 
+                                  : "border-red-500/40 bg-red-500/10 text-red-700"
+                              )}
+                            >
+                              {inv.billing_month}: ৳{remaining.toLocaleString()} {isPartial ? "Remaining" : "Due"}
+                            </Badge>
+                          )
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* All Invoices Table */}
+                {billing.invoices && billing.invoices.length > 0 && (
+                  <Card>
+                    <CardHeader className="border-b bg-muted/20 pb-4 pt-5">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-primary" />
+                        Invoice History
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead>Billing Month</TableHead>
+                            <TableHead className="text-right">Invoiced</TableHead>
+                            <TableHead className="text-right">Paid</TableHead>
+                            <TableHead className="text-right">Remaining</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {billing.invoices.map((inv: any) => {
+                            const remaining = Number(inv.amount_due) - Number(inv.amount_paid)
+                            return (
+                              <TableRow key={inv.id}>
+                                <TableCell className="font-semibold">{inv.billing_month}</TableCell>
+                                <TableCell className="text-right font-mono">৳{Number(inv.amount_due).toLocaleString()}</TableCell>
+                                <TableCell className="text-right font-mono text-emerald-600">৳{Number(inv.amount_paid).toLocaleString()}</TableCell>
+                                <TableCell className={cn("text-right font-mono font-bold", remaining > 0 ? "text-red-600" : "text-emerald-600")}>
+                                  ৳{remaining.toLocaleString()}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge 
+                                    variant="outline" 
+                                    className={cn(
+                                      "capitalize shadow-none text-xs",
+                                      inv.status === 'paid' && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600",
+                                      inv.status === 'partial' && "border-amber-500/30 bg-amber-500/10 text-amber-600",
+                                      inv.status === 'unpaid' && "border-red-500/30 bg-red-500/10 text-red-600"
+                                    )}
+                                  >
+                                    {inv.status}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Payment Ledger Table */}
                 <Card>
                    <CardHeader className="border-b bg-muted/20 pb-4 pt-5">
                       <CardTitle className="text-sm flex items-center gap-2">
@@ -340,6 +430,7 @@ export default function UserProfilePage({
                             <TableRow className="hover:bg-transparent">
                                <TableHead className="w-[120px]">Date</TableHead>
                                <TableHead>Description</TableHead>
+                               <TableHead>Allocated Month</TableHead>
                                <TableHead>Method</TableHead>
                                <TableHead>Received By</TableHead>
                                <TableHead className="text-right">Amount (৳)</TableHead>
@@ -348,7 +439,7 @@ export default function UserProfilePage({
                          <TableBody>
                             {billing.payments?.length === 0 ? (
                                <TableRow>
-                                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground italic">No payment records found.</TableCell>
+                                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic">No payment records found.</TableCell>
                                </TableRow>
                             ) : (
                                billing.payments?.map((payment: any) => {
@@ -368,6 +459,15 @@ export default function UserProfilePage({
                                                 <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/10 border-dashed">Full</Badge>
                                               )}
                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                           {payment.billing_month_reference ? (
+                                             <Badge variant="outline" className="text-xs border-blue-500/30 bg-blue-500/10 text-blue-700 shadow-none font-medium">
+                                               {payment.billing_month_reference}
+                                             </Badge>
+                                           ) : (
+                                             <span className="text-muted-foreground text-xs italic">—</span>
+                                           )}
                                         </TableCell>
                                         <TableCell className="capitalize text-muted-foreground">{payment.payment_method || "Cash"}</TableCell>
                                         <TableCell className="text-muted-foreground">{payment.collected_by || "System"}</TableCell>

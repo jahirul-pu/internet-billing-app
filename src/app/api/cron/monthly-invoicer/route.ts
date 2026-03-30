@@ -3,15 +3,24 @@ import { supabaseAdmin } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
+/**
+ * GET /api/cron/monthly-invoicer
+ * 
+ * Runs on the 1st of each month. For each active customer whose billing
+ * start date has arrived:
+ *   1. Adds (monthly_fee - discount) to customer.due_balance
+ *   2. Creates a new invoice record for the billing month
+ *   3. Logs the action to system_logs
+ */
 export async function GET(request: Request) {
-  // Security Note: In production, configure Vercel Cron to send a secure bearer token
-  // and validate it here to prevent unauthorized triggering.
-
   try {
-    const today = new Date().toISOString().split('T')[0]
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
 
-    // 1. Target Logic
-    // Query active customers whose billing start date has arrived
+    // Generate the billing month label, e.g. "April 2026"
+    const billingMonth = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+    // 1. Target Logic - Query active customers whose billing start date has arrived
     const { data: customers, error: fetchErr } = await supabaseAdmin
       .from('customers')
       .select('id, pppoe_username, due_balance, monthly_bill, discount, packages:package_id(price)')
@@ -38,6 +47,7 @@ export async function GET(request: Request) {
 
       const newBalance = Number(c.due_balance || 0) + charge
 
+      // 2a. Update the customer's due_balance (quick-reference summary)
       const { error: updateErr } = await supabaseAdmin
         .from('customers')
         .update({ due_balance: newBalance })
@@ -48,13 +58,31 @@ export async function GET(request: Request) {
         return null
       }
 
+      // 2b. Insert a new invoice record for this billing month
+      const { error: invoiceErr } = await supabaseAdmin
+        .from('invoices')
+        .upsert({
+          customer_id: c.id,
+          billing_month: billingMonth,
+          amount_due: charge,
+          amount_paid: 0,
+          status: 'unpaid'
+        }, {
+          onConflict: 'customer_id,billing_month'
+        })
+
+      if (invoiceErr) {
+        console.error(`Failed to create invoice for ${c.pppoe_username} [${billingMonth}]:`, invoiceErr)
+        // Non-fatal: due_balance was already updated, log and continue
+      }
+
       usersCharged++
       totalRevenueAdded += charge
 
       // 3. Audit Trail
       logs.push({
         action_type: 'MONTHLY_INVOICE',
-        description: `Applied standard monthly charge of ৳${charge}`,
+        description: `Applied monthly charge of ৳${charge} for ${billingMonth}`,
         target_user: c.pppoe_username
       })
     })
@@ -69,7 +97,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Successfully invoiced ${usersCharged} users. Total value: ৳${totalRevenueAdded}` 
+      message: `Successfully invoiced ${usersCharged} users for ${billingMonth}. Total value: ৳${totalRevenueAdded}` 
     })
   } catch (error: any) {
     console.error('[CRON] Monthly Invoicer Error:', error)

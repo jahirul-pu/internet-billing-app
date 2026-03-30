@@ -27,10 +27,17 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
 
     if (dateQuery) {
-      // Filter by exactly this date
-      const startOfDay = `${dateQuery}T00:00:00.000Z`
-      const endOfDay = `${dateQuery}T23:59:59.999Z`
-      query = query.gte('created_at', startOfDay).lte('created_at', endOfDay)
+      // dateQuery is 'YYYY-MM-DD'
+      // Determine the start and end of that specific day in Bangladesh Time (+06:00)
+      // If we query UTC, payments from 1 AM BDT on 31st March resolve to 30th March 7 PM UTC.
+      const startOfDay = `${dateQuery}T00:00:00.000+06:00`
+      const endOfDay = `${dateQuery}T23:59:59.999+06:00`
+      
+      // Convert to UTC ISO Strings for Supabase comparison (to avoid ambiguity)
+      const gte = new Date(startOfDay).toISOString()
+      const lte = new Date(endOfDay).toISOString()
+      
+      query = query.gte('created_at', gte).lte('created_at', lte)
     }
 
     if (collectorQuery && collectorQuery !== 'all') {
