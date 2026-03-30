@@ -244,6 +244,7 @@ export default function UsersPage() {
       const urlParams = new URLSearchParams(window.location.search)
       const editId = urlParams.get("edit")
       const action = urlParams.get("action")
+      const payId = urlParams.get("pay")
       
       if (editId) {
         try {
@@ -257,6 +258,20 @@ export default function UsersPage() {
             console.error("Deep link edit failed", e)
         }
         // Clean URL after opening modal
+        window.history.replaceState(null, "", window.location.pathname)
+      } else if (payId) {
+        try {
+          const res = await fetch(`/api/customers/${payId}`)
+          if (res.ok) {
+            const user = await res.json()
+            if (user) {
+               setSelectedForPayment(user)
+               setIsPaymentModalOpen(true)
+            }
+          }
+        } catch (e) {
+            console.error("Deep link pay failed", e)
+        }
         window.history.replaceState(null, "", window.location.pathname)
       } else if (action === "new") {
         openAddModal()
@@ -503,6 +518,26 @@ export default function UsersPage() {
     download: { label: "Download", color: "hsl(var(--chart-emerald))" },
     upload: { label: "Upload", color: "hsl(var(--chart-blue))" },
   } satisfies ChartConfig
+
+  const handleToggleSuspension = async (userToToggle: any) => {
+    if (!userToToggle) return
+    try {
+      setIsSubmitting(true)
+      const newStatus = userToToggle.status === "active" ? "suspended" : "active"
+      const res = await fetch(`/api/customers/${userToToggle.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      })
+      if (!res.ok) throw new Error("Failed to update status")
+      toast.success(`Customer ${newStatus === 'active' ? 'enabled' : 'suspended'}`)
+      loadData() // Refresh list
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const handleSync = async () => {
     try {
@@ -1196,6 +1231,7 @@ export default function UsersPage() {
                   <TableHead>Acc Status</TableHead>
                   <TableHead>Billing</TableHead>
                   <TableHead>Plan</TableHead>
+                  <TableHead>Monthly Bill</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1310,41 +1346,58 @@ export default function UsersPage() {
                       <TableCell className="max-w-[150px] truncate">
                         {user.packages ? user.packages.name : "Unmapped Plan"}
                       </TableCell>
+                      <TableCell className="font-mono font-medium text-xs">
+                        {user.monthly_bill ? `৳ ${user.monthly_bill}` : (user.packages?.price ? `৳ ${user.packages.price}` : "—")}
+                      </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
                            {bStatus !== 'paid' && (
                              <Button 
                                variant="secondary" 
                                size="sm" 
-                               className="h-7 text-[10px] font-bold px-2.5 gap-1.5 shadow-none"
+                               className="h-8 text-xs font-bold px-3 gap-1.5 shadow-none"
                                onClick={() => {
                                   setSelectedForPayment(user)
                                   setIsPaymentModalOpen(true)
                                }}
                              >
-                                <DollarSign className="h-3 w-3 text-emerald-600" />
+                                <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
                                 Collect
                              </Button>
                            )}
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             className="h-8 text-xs font-medium px-3 gap-1.5"
+                             onClick={() => window.location.href = `/users/${user.id}`}
+                           >
+                             <Eye className="h-3.5 w-3.5" />
+                             View
+                           </Button>
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             className="h-8 text-xs font-medium px-3 gap-1.5"
+                             onClick={() => openEditModal(user)}
+                           >
+                             <Pencil className="h-3.5 w-3.5" />
+                             Edit
+                           </Button>
                            <DropdownMenu>
                              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
                                  <MoreHorizontal className="h-4 w-4" />
-                                 <span className="sr-only">Open menu</span>
                              </DropdownMenuTrigger>
                              <DropdownMenuContent align="end">
                                <DropdownMenuItem onClick={() => handleDetailOpen(user)}>
-                                 View Live Detail
+                                 <Eye className="h-3.5 w-3.5 mr-2" />
+                                 Quick Details
                                </DropdownMenuItem>
-                               <DropdownMenuItem onClick={() => window.location.href = `/users/${user.id}`}>
-                                 Full Profile
-                               </DropdownMenuItem>
-                               <DropdownMenuItem onClick={() => openEditModal(user)}>
-                                 Edit Details
-                               </DropdownMenuItem>
-                               <DropdownMenuItem>View Billing</DropdownMenuItem>
                                <DropdownMenuSeparator />
-                               <DropdownMenuItem variant="destructive">
-                                 Suspend Connection
+                               <DropdownMenuItem 
+                                 className="text-destructive focus:text-destructive"
+                                 onClick={() => handleToggleSuspension(user)}
+                               >
+                                 {user.status === 'active' ? 'Suspend Connection' : 'Resume Connection'}
                                </DropdownMenuItem>
                              </DropdownMenuContent>
                            </DropdownMenu>
@@ -1359,272 +1412,129 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      {/* User Detail Flyout */}
-      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          <SheetHeader className="px-6 pt-6 pb-4">
-            <div className="flex items-center justify-between pr-6">
-              <SheetTitle className="text-xl">User Life-Monitor</SheetTitle>
-            <div className="flex flex-wrap items-center gap-2 mt-2">
+      {/* User Life-Monitor Bottom Panel */}
+      {detailOpen && detailUser && (
+        <div 
+          className="fixed right-0 bottom-0 left-0 md:left-64 z-50 bg-popover border-t shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-in slide-in-from-bottom duration-300"
+        >
+          {/* Compact Header */}
+          <div className="bg-popover border-b px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-bold tracking-tight">{detailUser?.full_name}</h2>
+              <span className="text-[10px] text-muted-foreground font-mono">{detailUser?.pppoe_username}</span>
               {onlineUsers.has(detailUser?.pppoe_username) ? (
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200 animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-200 animate-pulse text-[9px] h-4 px-1.5">
+                  <span className="w-1 h-1 rounded-full bg-emerald-500 mr-1" />
                   Online
                 </Badge>
               ) : (
-                <Badge variant="outline" className="bg-slate-500/10 text-slate-500 border-slate-300">
+                <Badge variant="outline" className="bg-slate-500/10 text-slate-500 border-slate-300 text-[9px] h-4 px-1.5">
                   Offline
                 </Badge>
               )}
               {detailUser?.status === "active" ? (
-                <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 border-indigo-200">
-                  Account: Active
-                </Badge>
+                <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 border-indigo-200 text-[9px] h-4 px-1.5">Active</Badge>
               ) : (
-                <Badge variant="destructive" className="capitalize">
-                  Account: {detailUser?.status || 'Unknown'}
-                </Badge>
+                <Badge variant="destructive" className="capitalize text-[9px] h-4 px-1.5">{detailUser?.status || 'Unknown'}</Badge>
               )}
-            </div>
-            </div>
-            <SheetDescription>
-              Real-time technical metadata for {detailUser?.full_name}
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex flex-col gap-8 px-6 pb-8">
-            {/* Identity Group */}
-            <div className="grid gap-4">
-              <div className="flex flex-col gap-1 px-1">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Identity</span>
-                <Separator className="mt-1" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase">Username</p>
-                  <p className="font-mono text-sm">{detailUser?.pppoe_username}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-muted-foreground uppercase">Phone</p>
-                  <p className="text-sm font-semibold">{detailUser?.phone}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Live Session Group */}
-            <div className="grid gap-4">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex flex-col gap-1">
-                   <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Live Telemetry</span>
-                   <Separator className="mt-1" />
-                </div>
-                <Button 
-                   variant="ghost" 
-                   size="icon" 
-                   className="h-8 w-8 rounded-full hover:bg-muted"
-                   disabled={isDetailLoading}
-                   onClick={() => handleDetailOpen(detailUser)}
-                >
-                   <RefreshCcw className={cn("h-3.5 w-3.5", isDetailLoading && "animate-spin")} />
-                </Button>
-              </div>
-              
-              {isDetailLoading ? (
-                <div className="flex flex-col items-center justify-center py-8 gap-3 border border-dashed rounded-lg bg-muted/30">
-                  <RefreshCcw className="h-5 w-5 animate-spin text-primary/60" />
-                  <p className="text-[11px] font-medium text-muted-foreground italic">Querying MikroTik Active Sessions...</p>
-                </div>
-              ) : detailUser?.live ? (
-                <div className="grid gap-6">
-                   <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground uppercase">Live IP Address</p>
-                        <p className="font-mono text-sm text-emerald-600 font-bold">{detailUser.live.ip_address}</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground uppercase">Connection Uptime</p>
-                        <p className="font-mono text-sm text-amber-600 font-bold">{detailUser.live.uptime}</p>
-                      </div>
-                   </div>
-                   <div className="space-y-1 bg-muted/50 p-3 rounded-lg border">
-                      <p className="text-xs font-medium text-muted-foreground uppercase flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary" /> Hardware MAC Binding
-                      </p>
-                      <p className="font-mono text-sm tracking-wider font-bold mt-1">{detailUser.live.mac_address}</p>
-                   </div>
-
-                   {/* Session Cumulative Traffic */}
-                    <div className="grid grid-cols-2 gap-4">
-                     <div className="flex flex-col gap-1 p-3 border rounded-lg bg-violet-500/5">
-                        <div className="flex items-center gap-2 text-violet-600">
-                          <ArrowDown className="h-3 w-3" />
-                          <span className="text-[10px] font-bold uppercase tracking-tight">Session Download</span>
-                        </div>
-                        <p className="text-lg font-bold tracking-tight">{currentTraffic.traffic_in}</p>
-                        <p className="text-[9px] text-muted-foreground leading-none mt-0.5">Total Data Recv</p>
-                     </div>
-                     <div className="flex flex-col gap-1 p-3 border rounded-lg bg-orange-500/5">
-                        <div className="flex items-center gap-2 text-orange-600">
-                          <ArrowUp className="h-3 w-3" />
-                          <span className="text-[10px] font-bold uppercase tracking-tight">Session Upload</span>
-                        </div>
-                        <p className="text-lg font-bold tracking-tight">{currentTraffic.traffic_out}</p>
-                        <p className="text-[9px] text-muted-foreground leading-none mt-0.5">Total Data Sent</p>
-                     </div>
-                    </div>
-
-                   {/* Live Traffic Graph */}
-                   <div className="grid gap-4 pt-4">
-                      <div className="flex flex-col gap-1 px-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Live Throughput</span>
-                        <Separator className="mt-1" />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col gap-1 p-3 border rounded-lg bg-emerald-500/5">
-                           <div className="flex items-center gap-2 text-emerald-600">
-                             <ArrowDown className="h-3 w-3" />
-                             <span className="text-[10px] font-bold uppercase">Download</span>
-                           </div>
-                           <p className="text-lg font-bold tracking-tight">{currentTraffic.download} <span className="text-[10px] font-normal text-muted-foreground">Mbps</span></p>
-                        </div>
-                        <div className="flex flex-col gap-1 p-3 border rounded-lg bg-blue-500/5">
-                           <div className="flex items-center gap-2 text-blue-600">
-                             <ArrowUp className="h-3 w-3" />
-                             <span className="text-[10px] font-bold uppercase">Upload</span>
-                           </div>
-                           <p className="text-lg font-bold tracking-tight">{currentTraffic.upload} <span className="text-[10px] font-normal text-muted-foreground">Mbps</span></p>
-                        </div>
-                      </div>
-
-                      <div className="h-[180px] w-full mt-2">
-                        <ChartContainer config={userChartConfig}>
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={trafficHistory}>
-                              <defs>
-                                <linearGradient id="fillDownload" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="var(--color-download)" stopOpacity={0.3} />
-                                  <stop offset="95%" stopColor="var(--color-download)" stopOpacity={0} />
-                                </linearGradient>
-                                <linearGradient id="fillUpload" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="var(--color-upload)" stopOpacity={0.3} />
-                                  <stop offset="95%" stopColor="var(--color-upload)" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
-                              <XAxis 
-                                dataKey="time" 
-                                hide 
-                              />
-                              <YAxis 
-                                hide
-                                domain={[0, 'auto']}
-                              />
-                              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                              <Area
-                                type="monotone"
-                                dataKey="download"
-                                stroke="var(--color-download)"
-                                strokeWidth={2}
-                                fillOpacity={1}
-                                fill="url(#fillDownload)"
-                              />
-                              <Area
-                                type="monotone"
-                                dataKey="upload"
-                                stroke="var(--color-upload)"
-                                strokeWidth={2}
-                                fillOpacity={1}
-                                fill="url(#fillUpload)"
-                              />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </ChartContainer>
-                      </div>
-                   </div>
-
-                   {/* Monthly Usage History */}
-                   <div className="grid gap-4 pt-4">
-                      <div className="flex flex-col gap-1 px-1">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Monthly Usage History</span>
-                        <Separator className="mt-1" />
-                      </div>
-
-                      {usageHistory.length > 0 ? (
-                        <div className="h-[180px] w-full mt-2">
-                           <ChartContainer config={userChartConfig}>
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={usageHistory}>
-                                  <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
-                                  <XAxis 
-                                    dataKey="date" 
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tick={{ fontSize: 9 }}
-                                    tickFormatter={(val) => val.split('/')[0]} // Show just the day
-                                  />
-                                  <YAxis hide />
-                                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-                                  <Bar 
-                                    dataKey="downloadGB" 
-                                    fill="var(--color-download)" 
-                                    radius={[0, 0, 2, 2]} 
-                                    stackId="a" 
-                                  />
-                                  <Bar 
-                                    dataKey="uploadGB" 
-                                    fill="var(--color-upload)" 
-                                    radius={[2, 2, 0, 0]} 
-                                    stackId="a" 
-                                  />
-                                </BarChart>
-                              </ResponsiveContainer>
-                           </ChartContainer>
-                           <p className="text-[10px] text-center text-muted-foreground mt-2 italic">Data consumption in Gigabytes (GB) over last 30 days</p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8 gap-2 border border-dashed rounded-lg bg-muted/10 opacity-60">
-                          <p className="text-[10px] text-muted-foreground">Compiling historical snapshots...</p>
-                        </div>
-                      )}
-                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 gap-2 border border-dashed rounded-lg bg-muted/20">
-                   <FileWarning className="h-5 w-5 text-muted-foreground/50" />
-                   <p className="text-[11px] text-muted-foreground font-medium">Device is currently inactive</p>
+              {detailUser?.live && (
+                <div className="hidden md:flex items-center gap-3 ml-2 text-[10px]">
+                  <span className="text-muted-foreground">IP: <span className="font-mono font-bold text-emerald-600">{detailUser.live.ip_address}</span></span>
+                  <span className="text-muted-foreground">Up: <span className="font-mono font-bold text-amber-600">{detailUser.live.uptime}</span></span>
+                  <span className="text-muted-foreground">MAC: <span className="font-mono font-bold">{detailUser.live.mac_address}</span></span>
                 </div>
               )}
             </div>
-
-            {/* Billing Overview */}
-            <div className="grid gap-4">
-              <div className="flex flex-col gap-1 px-1">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Plan Mapping</span>
-                <Separator className="mt-1" />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Assigned Profile</span>
-                  <span className="text-sm font-bold text-primary">{detailUser?.packages?.name || "No Profile Linked"}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Monthly Price</span>
-                  <span className="text-sm font-bold">
-                    ৳ {detailUser?.monthly_fee || 
-                       (Array.isArray(detailUser?.packages) ? detailUser?.packages[0]?.price : detailUser?.packages?.price) || 
-                       0}
-                  </span>
-                </div>
-              </div>
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isDetailLoading} onClick={() => handleDetailOpen(detailUser)}>
+                <RefreshCcw className={cn("h-3 w-3", isDetailLoading && "animate-spin")} />
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 text-[10px] px-2 gap-1" onClick={() => window.location.href = `/users/${detailUser.id}`}>
+                <User className="h-3 w-3" />
+                Profile
+              </Button>
+              <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2 gap-1 text-muted-foreground hover:text-destructive" onClick={() => { setDetailOpen(false); setDetailUser(null) }}>
+                <X className="h-3.5 w-3.5" />
+                Exit
+              </Button>
             </div>
-
-            <Button className="w-full mt-4" variant="outline" onClick={() => window.location.href = `/users/${detailUser.id}`}>
-               Manage Configuration & Billing
-            </Button>
           </div>
-        </SheetContent>
-      </Sheet>
+
+          {/* Compact Content */}
+          <div className="px-4 py-2">
+            {isDetailLoading ? (
+              <div className="flex items-center justify-center py-2 gap-2">
+                <RefreshCcw className="h-4 w-4 animate-spin text-primary/60" />
+                <p className="text-[10px] text-muted-foreground italic">Querying MikroTik...</p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-4">
+
+                {/* Session Stats */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Session</span>
+                  {detailUser?.live ? (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <div className="flex items-center gap-1 px-2 py-1 border rounded text-[10px] bg-violet-500/5">
+                        <ArrowDown className="h-2.5 w-2.5 text-violet-600" />
+                        <span className="font-bold">{currentTraffic.traffic_in}</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-1 border rounded text-[10px] bg-orange-500/5">
+                        <ArrowUp className="h-2.5 w-2.5 text-orange-600" />
+                        <span className="font-bold">{currentTraffic.traffic_out}</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-1 border rounded text-[10px] bg-emerald-500/5">
+                        <ArrowDown className="h-2.5 w-2.5 text-emerald-600" />
+                        <span className="font-bold">{currentTraffic.download}</span>
+                        <span className="text-muted-foreground text-[8px]">Mbps</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-1 border rounded text-[10px] bg-blue-500/5">
+                        <ArrowUp className="h-2.5 w-2.5 text-blue-600" />
+                        <span className="font-bold">{currentTraffic.upload}</span>
+                        <span className="text-muted-foreground text-[8px]">Mbps</span>
+                      </div>
+                      <Separator orientation="vertical" className="h-5 mx-1" />
+                      <span className="text-[10px] text-muted-foreground">{detailUser?.packages?.name || "—"}</span>
+                      <span className="text-[10px] font-bold">৳{detailUser?.monthly_fee || detailUser?.packages?.price || 0}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-[10px] text-muted-foreground">Inactive</span>
+                      <Separator orientation="vertical" className="h-4" />
+                      <span className="text-[10px] text-muted-foreground">{detailUser?.packages?.name || "—"}</span>
+                      <span className="text-[10px] font-bold">৳{detailUser?.monthly_fee || detailUser?.packages?.price || 0}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Actions — inline row */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => window.location.href = `/users/${detailUser.id}`}>
+                    <User className="h-3 w-3" /> Profile
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={() => openEditModal(detailUser)}>
+                    <Pencil className="h-3 w-3" /> Edit
+                  </Button>
+                  {getBillingStatus(detailUser) !== 'paid' && (
+                    <Button variant="secondary" size="sm" className="h-7 text-xs gap-1.5" onClick={() => { setSelectedForPayment(detailUser); setIsPaymentModalOpen(true) }}>
+                      <DollarSign className="h-3 w-3 text-emerald-600" /> Collect
+                    </Button>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-7 text-xs gap-1.5 text-destructive border-destructive/20 hover:bg-destructive/5"
+                    onClick={() => handleToggleSuspension(detailUser)}
+                  >
+                    <Wifi className="h-3 w-3" /> {detailUser.status === 'active' ? 'Suspend' : 'Resume'}
+                  </Button>
+                </div>
+
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Payment Collection Dialog */}
       <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>

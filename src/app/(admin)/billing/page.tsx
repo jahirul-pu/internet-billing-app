@@ -275,6 +275,43 @@ export default function BillingPage() {
   const officeCollected = ledgerData.filter(i => ["Office", "System", "Online"].includes(i.collected_by)).reduce((s, i) => s + (Number(i.amount) || 0), 0)
   const fieldCollected = ledgerData.filter(i => !["Office", "System", "Online"].includes(i.collected_by)).reduce((s, i) => s + (Number(i.amount) || 0), 0)
 
+  // Merge transactions by customer for UI display
+  const mergedLedgerData = useMemo(() => {
+    const map = new Map()
+    
+    ledgerData.forEach(rawTrx => {
+      const trx = JSON.parse(JSON.stringify(rawTrx)) // Deep clone to avoid polluting state
+      const custId = trx.customers?.id
+      
+      if (!custId) {
+        map.set(trx.id, { ...trx, isMerged: false })
+        return
+      }
+
+      if (map.has(custId)) {
+        const existing = map.get(custId)
+        existing.amount = Number(existing.amount) + Number(trx.amount)
+        
+        // Take the latest created_at date
+        if (new Date(trx.created_at).getTime() > new Date(existing.created_at).getTime()) {
+          existing.created_at = trx.created_at
+        }
+
+        // Handle divergent collection methods
+        if (existing.collected_by !== trx.collected_by && existing.collected_by !== "Multiple Sources") {
+          existing.collected_by = "Multiple Sources"
+        }
+
+        existing.isMerged = true
+        existing.mergeCount = (existing.mergeCount || 1) + 1
+      } else {
+        map.set(custId, { ...trx, isMerged: false, mergeCount: 1 })
+      }
+    })
+
+    return Array.from(map.values()).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [ledgerData])
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -493,7 +530,7 @@ export default function BillingPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ledgerData.map((trx) => {
+                  {mergedLedgerData.map((trx) => {
                     const customer = trx.customers || {}
                     const rawDue = Number(customer.due_balance || 0)
                     
@@ -529,6 +566,11 @@ export default function BillingPage() {
                               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 border-emerald-500/20 py-0.5 font-bold shadow-none text-sm">
                                 {Number(trx.amount).toLocaleString()} ৳
                               </Badge>
+                              {trx.isMerged && (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed bg-muted/20">
+                                  {trx.mergeCount}x payments
+                                </Badge>
+                              )}
                           </div>
                         </TableCell>
                         <TableCell>

@@ -1,12 +1,27 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/db'
 import { connectMikrotik } from '@/lib/mikrotik'
+import { createClient } from '@/utils/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+async function checkSuperAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return false
+
+  const { data: profile } = await supabaseAdmin
+    .from('staff_profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  return profile?.role === 'SUPER_ADMIN'
+}
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params
+    const { id } = await params
     const { data, error } = await supabaseAdmin
       .from('customers')
       .select(`
@@ -28,10 +43,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
 }
 
-export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let mikrotikApi
   try {
-    const { id } = await context.params
+    const { id } = await params
     const body = await request.json()
 
     // 1. If we are updating sensitive network credentials, we MUST sync to MikroTik
@@ -95,9 +110,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 }
 
-export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await context.params
+    const isSuperAdmin = await checkSuperAdmin()
+    // if (!isSuperAdmin) {
+    //   return new NextResponse('Unauthorized - Super Admin role required', { status: 403 })
+    // }
+
+    const { id } = await params
 
     // Soft Delete Implementation:
     // Instead of using .delete(), we strategically update the core status to 'cancelled'
@@ -119,3 +139,4 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 })
   }
 }
+

@@ -251,7 +251,7 @@ export default function UserProfilePage({
               <Edit className="mr-1.5 h-3.5 w-3.5" />
               Edit Profile
             </Button>
-            <Button size="sm">
+            <Button size="sm" onClick={() => window.location.href = `/users?pay=${id}`}>
               <CreditCard className="mr-1.5 h-3.5 w-3.5" />
               Collect Payment
             </Button>
@@ -529,6 +529,22 @@ export default function UserProfilePage({
               <div className="space-y-4">
                 <h3 className="font-semibold text-sm text-primary uppercase tracking-wider">Billing & Network</h3>
                 <div className="grid grid-cols-2 gap-4">
+                  <div>
+                     <p className="text-xs text-muted-foreground">Connection Date</p>
+                     <p className="font-medium">
+                       {customer.billing_start_date ? new Date(customer.billing_start_date).toLocaleDateString() : (customer.created_at ? new Date(customer.created_at).toLocaleDateString() : "—")}
+                     </p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Billing Check Date</p>
+                     <p className="font-medium">Day {customer.billing_day || 1} of Month</p>
+                  </div>
+                  <div>
+                     <p className="text-xs text-muted-foreground">Static IP Address</p>
+                     <p className="font-medium font-mono text-xs tracking-tight bg-muted/40 p-1 rounded inline-block">
+                       {customer.ip_address || "Dynamic / Auto"}
+                     </p>
+                  </div>
                   <div>
                      <p className="text-xs text-muted-foreground">Internet Package</p>
                      <p className="font-medium">{customer.packages?.name || "—"}</p>

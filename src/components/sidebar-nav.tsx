@@ -56,12 +56,14 @@ const navGroups = [
   {
     title: "SYSTEM",
     items: [
+      { name: "Settings", href: "/settings", icon: Settings },
+      { name: "Staff Access", href: "/settings/staff", icon: ContactRound },
       { name: "System Logs", href: "/logs", icon: TerminalSquare },
     ]
   }
 ]
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarNav({ onNavigate, role = 'SUPER_ADMIN' }: { onNavigate?: () => void, role?: string }) {
   const pathname = usePathname()
 
   const DashboardIcon = LayoutDashboard
@@ -91,37 +93,51 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         </Link>
       </div>
 
-      {navGroups.map((group) => (
-        <div key={group.title} className="flex flex-col gap-0.5">
-          <h3 className="px-4 text-[10px] font-semibold tracking-[0.15em] text-slate-400/50 uppercase mb-1">
-            {group.title}
-          </h3>
-          {group.items.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onNavigate}
-                className={cn(
-                  "group flex items-center gap-3 px-4 py-[6px] text-[13px] font-medium transition-all relative border-l-[3px]",
-                  isActive 
-                    ? "border-indigo-500 bg-indigo-500/10 text-white" 
-                    : "border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
-                )}
-              >
-                <item.icon className={cn(
-                  "h-4 w-4 transition-all duration-300",
-                  isActive 
-                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
-                    : "text-slate-500 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
-                )} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </div>
-      ))}
+      {navGroups.map((group) => {
+        // Pre-filter items based on role
+        const visibleItems = group.items.filter(item => {
+          if (role === 'MANAGER') {
+            if (item.name === 'Staff Access' || item.name === 'System Logs' || item.name === 'Settings') {
+              return false
+            }
+          }
+          return true
+        })
+
+        if (visibleItems.length === 0) return null
+
+        return (
+          <div key={group.title} className="flex flex-col gap-0.5">
+            <h3 className="px-4 text-[10px] font-semibold tracking-[0.15em] text-slate-400/50 uppercase mb-1">
+              {group.title}
+            </h3>
+            {visibleItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "group flex items-center gap-3 px-4 py-[6px] text-[13px] font-medium transition-all relative border-l-[3px]",
+                    isActive 
+                      ? "border-indigo-500 bg-indigo-500/10 text-white" 
+                      : "border-transparent text-slate-400 hover:bg-slate-800/30 hover:text-slate-200"
+                  )}
+                >
+                  <item.icon className={cn(
+                    "h-4 w-4 transition-all duration-300",
+                    isActive 
+                      ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
+                      : "text-slate-500 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]"
+                  )} />
+                  {item.name}
+                </Link>
+              )
+            })}
+          </div>
+        )
+      })}
     </nav>
   )
 }
