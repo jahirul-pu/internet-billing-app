@@ -120,7 +120,9 @@ export default function InventoryPage() {
                   <Label htmlFor="category">Category</Label>
                   <Select defaultValue="onu">
                     <SelectTrigger>
-                      <SelectValue placeholder="Select Category" />
+                      <SelectValue placeholder="Select Category">
+                        ONU / ONT
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="router">Router</SelectItem>
@@ -296,7 +298,9 @@ export default function InventoryPage() {
                 <Label htmlFor="assignType">Assign To Role</Label>
                 <Select defaultValue="user">
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Role" />
+                    <SelectValue placeholder="Select Role">
+                      Customer (User)
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="user">Customer (User)</SelectItem>

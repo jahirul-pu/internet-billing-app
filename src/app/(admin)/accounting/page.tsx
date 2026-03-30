@@ -165,7 +165,9 @@ export default function AccountingPage() {
                   <Label htmlFor="category">Expense Category</Label>
                   <Select defaultValue="bandwidth">
                     <SelectTrigger>
-                      <SelectValue placeholder="Select Category" />
+                      <SelectValue placeholder="Select Category">
+                        Upstream Bandwidth (IIG/ITC)
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="bandwidth">Upstream Bandwidth (IIG/ITC)</SelectItem>

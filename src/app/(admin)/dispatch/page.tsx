@@ -168,7 +168,9 @@ export default function DispatchPage() {
                 <Label htmlFor="taskType">Task Type</Label>
                 <Select defaultValue="new">
                   <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
+                    <SelectValue placeholder="Select type">
+                      New Connection
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="new">New Connection</SelectItem>
@@ -182,7 +184,9 @@ export default function DispatchPage() {
                 <Label htmlFor="technician">Assign Technician</Label>
                 <Select defaultValue="arif">
                   <SelectTrigger>
-                    <SelectValue placeholder="Select technician" />
+                    <SelectValue placeholder="Select technician">
+                      Arif Hossain
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="arif">Arif Hossain</SelectItem>

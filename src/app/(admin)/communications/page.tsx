@@ -115,7 +115,9 @@ export default function CommunicationsPage() {
                   <Label>Target Audience</Label>
                   <Select defaultValue="all_users">
                     <SelectTrigger>
-                      <SelectValue placeholder="Select audience" />
+                      <SelectValue placeholder="Select audience">
+                        All Users
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all_users">All Users</SelectItem>

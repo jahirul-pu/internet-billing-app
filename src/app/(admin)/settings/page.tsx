@@ -343,7 +343,9 @@ export default function SettingsPage() {
                         <Label>Default Currency</Label>
                         <Select defaultValue="bdt">
                           <SelectTrigger>
-                            <SelectValue placeholder="Select currency" />
+                            <SelectValue placeholder="Select currency">
+                              BDT (৳)
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="bdt">BDT (৳)</SelectItem>

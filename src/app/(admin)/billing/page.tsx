@@ -297,7 +297,9 @@ export default function BillingPage() {
                 <Label>Routing / Payment Method</Label>
                 <Select value={method} onValueChange={(val: any) => setMethod(val)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select channel" />
+                    <SelectValue placeholder="Select channel">
+                      {{ cash: "Cash Offset (Hand-to-Hand)", bkash: "bKash Integration", nagad: "Nagad Transfer", bank: "Bank Deposit" }[method] || "Select channel"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cash">Cash Offset (Hand-to-Hand)</SelectItem>
@@ -344,7 +346,9 @@ export default function BillingPage() {
 
             <Select value={collector} onValueChange={(v) => setCollector(v || "all")}>
               <SelectTrigger className="w-[160px] bg-background/50">
-                <SelectValue placeholder="All Collectors" />
+                <SelectValue placeholder="All Collectors">
+                  {collector === "all" ? "Every Collector" : (collector === "Office" ? "Office / Internal" : collector)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Every Collector</SelectItem>

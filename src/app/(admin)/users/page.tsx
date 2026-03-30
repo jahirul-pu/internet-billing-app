@@ -630,7 +630,9 @@ export default function UsersPage() {
                     <Label className="text-xs">Account Status</Label>
                     <Select value={filters.status} onValueChange={(v) => setFilters(f => ({ ...f, status: v || "all" }))}>
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="All" />
+                        <SelectValue placeholder="All Statuses">
+                          {{ all: "All Statuses", active: "Active", deactivated: "Deactivated", cancelled: "Cancelled" }[filters.status] || "All Statuses"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Statuses</SelectItem>
@@ -644,7 +646,9 @@ export default function UsersPage() {
                     <Label className="text-xs">Network Status</Label>
                     <Select value={filters.netStatus} onValueChange={(v) => setFilters(f => ({ ...f, netStatus: v || "all" }))}>
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="All" />
+                        <SelectValue placeholder="All">
+                          {{ all: "All", online: "Online", offline: "Offline" }[filters.netStatus] || "All"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All</SelectItem>
@@ -660,7 +664,9 @@ export default function UsersPage() {
                     <Label className="text-xs">Billing Status</Label>
                     <Select value={filters.billingStatus} onValueChange={(v) => setFilters(f => ({ ...f, billingStatus: v || "all" }))}>
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="All" />
+                        <SelectValue placeholder="All">
+                          {{ all: "All", paid: "Paid", overdue: "Overdue", pending: "Pending" }[filters.billingStatus] || "All"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All</SelectItem>
@@ -1628,7 +1634,9 @@ export default function UsersPage() {
                 <Label>Payment Method</Label>
                 <Select defaultValue="Cash" onValueChange={(v) => setSelectedForPayment({ ...selectedForPayment, method: v })}>
                    <SelectTrigger>
-                      <SelectValue placeholder="Cash" />
+                      <SelectValue placeholder="Cash Transaction">
+                        {{ Cash: "Cash Transaction", Bkash: "Bkash Transfer", Nagad: "Nagad Transfer" }[selectedForPayment?.method || "Cash"] || "Cash Transaction"}
+                      </SelectValue>
                    </SelectTrigger>
                    <SelectContent>
                       <SelectItem value="Cash">Cash Transaction</SelectItem>
@@ -1644,7 +1652,13 @@ export default function UsersPage() {
                    onValueChange={(v) => setSelectedForPayment({ ...selectedForPayment, collected_by: v })}
                 >
                    <SelectTrigger>
-                      <SelectValue placeholder="Select collector" />
+                      <SelectValue placeholder="Select collector">
+                        {(() => {
+                          const val = selectedForPayment?.collected_by || selectedForPayment?.collector || "Office";
+                          if (val === "Office") return "Office / Online";
+                          return val;
+                        })()}
+                      </SelectValue>
                    </SelectTrigger>
                    <SelectContent>
                       <SelectItem value="Office">Office / Online</SelectItem>

@@ -202,7 +202,9 @@ export default function SupportTicketsPage() {
                   <Label htmlFor="priority">Priority</Label>
                   <Select defaultValue="medium">
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select priority" />
+                      <SelectValue placeholder="Select priority">
+                        Medium (Yellow)
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Low (Green)</SelectItem>
