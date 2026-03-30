@@ -59,6 +59,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // ── Interfaces ──
 interface DashboardStats {
@@ -150,6 +151,10 @@ export default function DashboardPage() {
   const [errorCount, setErrorCount] = useState(0)
   const [recentLogs, setRecentLogs] = useState<LogEntry[]>([])
   const [paymentTrend, setPaymentTrend] = useState<PaymentDayData[]>([])
+  const [topUsersByData, setTopUsersByData] = useState<any[]>([])
+  const [topUsersBySpeed, setTopUsersBySpeed] = useState<any[]>([])
+  const [consumerSortBy, setConsumerSortBy] = useState<"data" | "speed">("speed")
+  const [fetchingTopUsers, setFetchingTopUsers] = useState(false)
 
   // VLAN uplink state
   const [vlanLive, setVlanLive] = useState<
@@ -322,6 +327,23 @@ export default function DashboardPage() {
     }
   }
 
+  // ── Fetch Top Users (Anomalies API) ──
+  const fetchTopUsers = async () => {
+    try {
+      setFetchingTopUsers(true)
+      const res = await fetch("/api/network/anomalies")
+      const json = await res.json()
+      if (json.success) {
+        setTopUsersByData(json.topUsersByData || [])
+        setTopUsersBySpeed(json.topUsersBySpeed || [])
+      }
+    } catch (err) {
+      console.error("Top users fetch error:", err)
+    } finally {
+      setFetchingTopUsers(false)
+    }
+  }
+
   useEffect(() => {
     fetchThroughput()
     fetchAnalytics()
@@ -330,6 +352,7 @@ export default function DashboardPage() {
     fetchLogs()
     fetchPaymentTrend()
     fetchSweeperStatus()
+    fetchTopUsers()
 
     bandwidthPollRef.current = setInterval(fetchThroughput, 2000)
     analyticsPollRef.current = setInterval(fetchAnalytics, 10000)
@@ -337,6 +360,7 @@ export default function DashboardPage() {
     vlanPollRef.current = setInterval(fetchVlanLive, 2000)
     const logsPoll = setInterval(fetchLogs, 30000)
     const trendPoll = setInterval(fetchPaymentTrend, 60000)
+    const topUsersPoll = setInterval(fetchTopUsers, 1000)
 
     return () => {
       if (bandwidthPollRef.current) clearInterval(bandwidthPollRef.current)
@@ -345,6 +369,7 @@ export default function DashboardPage() {
       if (vlanPollRef.current) clearInterval(vlanPollRef.current)
       clearInterval(logsPoll)
       clearInterval(trendPoll)
+      clearInterval(topUsersPoll)
     }
   }, [])
 
@@ -392,6 +417,40 @@ export default function DashboardPage() {
               ERR ({errorCount})
             </Badge>
           )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link href="/users?action=new">
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 hidden sm:flex">
+              <UserPlus className="h-3.5 w-3.5" />
+              New User
+            </Button>
+          </Link>
+          <Link href="/collections">
+            <Button size="sm" variant="outline" className="h-8 gap-1.5 hidden sm:flex">
+              <CreditCard className="h-3.5 w-3.5" />
+              Collect
+            </Button>
+          </Link>
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            className="h-8 w-8 p-0 sm:w-auto sm:px-3 gap-1.5"
+            onClick={() => {
+              setLoading(true);
+              Promise.all([
+                fetchThroughput(),
+                fetchAnalytics(),
+                fetchRevenue(),
+                fetchVlanLive(),
+                fetchLogs()
+              ]).finally(() => setLoading(false));
+              toast.success("System Refreshed", { description: "Telemetries and analytics updated." });
+            }}
+          >
+            <Activity className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         </div>
       </div>
 
@@ -686,8 +745,9 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          {/* Right: Revenue Velocity */}
-          <Card>
+          {/* Right Column: Revenue Velocity & Top Consumers */}
+          <div className="flex flex-col gap-4">
+            <Card>
             <CardHeader className="pb-2 pt-3 px-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
@@ -709,8 +769,9 @@ export default function DashboardPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="px-3 pb-3 pt-1">
-              <div className="h-[220px]">
+            <CardContent className="px-3 pb-3 pt-1 space-y-4">
+              {/* Section 1: Revenue Velocity Chart */}
+              <div className="h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={paymentTrend} margin={{ top: 8, right: 4, left: -12, bottom: 0 }}>
                     <defs>
@@ -749,6 +810,75 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Top Consumers Card */}
+          <Card className="flex-1 flex flex-col">
+            <CardHeader className="pb-2 pt-3 px-4 flex-none border-b border-border/10 bg-muted/5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Zap className="h-4 w-4 text-emerald-500" />
+                  <div>
+                    <CardTitle className="text-sm font-bold tracking-tight">
+                      Top Consumers
+                      {fetchingTopUsers && <Loader2 className="ml-2 inline h-3 w-3 animate-spin text-muted-foreground/40" />}
+                    </CardTitle>
+                    <p className="text-[10px] text-muted-foreground/60 uppercase tracking-widest font-semibold mt-0.5">
+                      Live bandwidth monitors
+                    </p>
+                  </div>
+                </div>
+                <Tabs value={consumerSortBy} onValueChange={(val) => setConsumerSortBy(val as "data" | "speed")} className="w-[140px]">
+                  <TabsList className="grid w-full grid-cols-2 h-8 p-1 bg-muted border border-border/10">
+                    <TabsTrigger value="data" className="text-[10px] font-bold uppercase tracking-wider h-6">Data</TabsTrigger>
+                    <TabsTrigger value="speed" className="text-[10px] font-bold uppercase tracking-wider h-6">Speed</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </CardHeader>
+            <CardContent className="px-0 pb-0 pt-0 flex-1 overflow-hidden">
+               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 custom-scrollbar min-h-[350px]">
+                  {(consumerSortBy === "data" ? topUsersByData : topUsersBySpeed).length > 0 ? (
+                    (consumerSortBy === "data" ? topUsersByData : topUsersBySpeed).map((user) => {
+                      const maxMetric = consumerSortBy === "data" ? (topUsersByData[0]?.totalGB || 1) : (topUsersBySpeed[0]?.totalMbps || 1)
+                      const currentMetric = consumerSortBy === "data" ? user.totalGB : user.totalMbps
+                      const percent = Math.min(100, Math.max(1, (currentMetric / maxMetric) * 100))
+                      return (
+                        <div key={user.username} className="flex items-center justify-between group py-1 border-b border-border/5 last:border-0">
+                          <div className="flex flex-col min-w-[50%]">
+                            <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors truncate max-w-[140px] sm:max-w-[160px]">
+                              {user.fullName}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground/60 font-medium tracking-tight mt-0.5 uppercase">
+                              {user.packageName} <span className="mx-1 opacity-50">•</span> {user.totalGB} GB
+                            </span>
+                          </div>
+                          <div className="text-right flex flex-col items-end pt-0.5 w-full max-w-[110px]">
+                             <span className="text-[10px] text-muted-foreground/50 tracking-tight font-mono w-full flex justify-end gap-2 mb-1.5">
+                               <span className={consumerSortBy === "speed" && user.downloadMbps > 5 ? "text-emerald-500" : ""}>↓{user.downloadMbps}</span>
+                               <span className={consumerSortBy === "speed" && user.uploadMbps > 3 ? "text-emerald-500" : ""}>↑{user.uploadMbps}</span>
+                             </span>
+                             <div className="h-1.5 w-full bg-muted/60 rounded-full overflow-hidden">
+                               <div 
+                                 className={`h-full rounded-r-md transition-all duration-500 ease-out ${consumerSortBy === "speed" ? "bg-emerald-500/80" : "bg-primary/50"}`}
+                                 style={{ width: `${percent}%` }} 
+                               />
+                             </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-[150px] text-muted-foreground opacity-50">
+                      <Zap className="h-6 w-6 mb-2 opacity-20" />
+                      <p className="text-[10px] uppercase font-bold tracking-widest">
+                        Analyzing traffic...
+                      </p>
+                    </div>
+                  )}
+               </div>
+            </CardContent>
+          </Card>
+          </div>
         </div>
 
         {/* ── Row 3: THE ACTION CENTER ─────────────────────────────── */}

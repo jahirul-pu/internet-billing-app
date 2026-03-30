@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect, useCallback } from "react"
+import { use, useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -17,7 +17,9 @@ import {
   UserCheck,
   UserX,
   Eye,
-  EyeOff
+  EyeOff,
+  Printer,
+  History
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -43,6 +45,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { useReactToPrint } from "react-to-print"
+import { CustomerStatement } from "./CustomerStatement"
+import { format } from "date-fns"
 
 export default function UserProfilePage({
   params,
@@ -54,12 +59,37 @@ export default function UserProfilePage({
   // Data States
   const [customer, setCustomer] = useState<any>(null)
   const [liveStatus, setLiveStatus] = useState<any>(null)
+  const [billing, setBilling] = useState<any>(null)
   
   // UI States
   const [loading, setLoading] = useState(true)
   const [statusLoading, setStatusLoading] = useState(false)
+  const [billingLoading, setBillingLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+
+  const printRef = useRef<HTMLDivElement>(null)
+  const handlePrint = useReactToPrint({
+    contentRef: printRef,
+    documentTitle: "Customer_Statement"
+  })
+
+  // ── Fetch Billing Ledger ──
+  const fetchBilling = useCallback(async () => {
+    try {
+      setBillingLoading(true)
+      const res = await fetch(`/api/customers/${id}/billing-history`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data.success) {
+        setBilling(data)
+      }
+    } catch(err) {
+      console.error(err)
+    } finally {
+      setBillingLoading(false)
+    }
+  }, [id])
 
   // ── Fetch Customer Data (Supabase) ──
   const fetchCustomer = useCallback(async () => {
@@ -94,7 +124,8 @@ export default function UserProfilePage({
 
   useEffect(() => {
     fetchCustomer()
-  }, [fetchCustomer])
+    fetchBilling()
+  }, [fetchCustomer, fetchBilling])
 
   useEffect(() => {
     if (customer?.pppoe_username) {
@@ -231,8 +262,131 @@ export default function UserProfilePage({
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="billing">Billing Ledger</TabsTrigger>
           <TabsTrigger value="sessions">Live Session</TabsTrigger>
         </TabsList>
+
+        {/* ── Billing Ledger Tab ── */}
+        <TabsContent value="billing">
+          {billingLoading ? (
+             <div className="flex h-[50vh] flex-col items-center justify-center text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin mb-4" />
+                <p>Loading financial history...</p>
+             </div>
+          ) : billing ? (
+             <div className="flex flex-col gap-6 mt-4">
+                {/* Actions */}
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center bg-card p-4 rounded-xl border shadow-sm gap-4">
+                   <div>
+                      <h2 className="text-lg font-bold tracking-tight">Financial History</h2>
+                      <p className="text-sm text-muted-foreground">Statement of account and lifetime payments</p>
+                   </div>
+                   <Button onClick={() => handlePrint()} className="gap-2 w-full sm:w-auto">
+                      <Printer className="h-4 w-4" />
+                      Download Statement
+                   </Button>
+                </div>
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                   <Card>
+                      <CardHeader className="pb-2">
+                         <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                           <CreditCard className="h-3 w-3" />
+                           Current Due Balance
+                         </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                         <div className={`text-2xl font-black ${billing.dueBalance > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                            ৳{billing.dueBalance}
+                         </div>
+                      </CardContent>
+                   </Card>
+                   <Card>
+                      <CardHeader className="pb-2">
+                         <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                           <CalendarDays className="h-3 w-3" />
+                           Monthly Package Fee
+                         </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                         <div className="text-2xl font-black text-foreground">৳{billing.monthlyFee}</div>
+                      </CardContent>
+                   </Card>
+                   <Card>
+                      <CardHeader className="pb-2">
+                         <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                           <Package className="h-3 w-3 text-amber-500" />
+                           Lifetime Value
+                         </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                         <div className="text-2xl font-black text-amber-500">৳{billing.lifetimeValue}</div>
+                      </CardContent>
+                   </Card>
+                </div>
+
+                {/* Ledger Table */}
+                <Card>
+                   <CardHeader className="border-b bg-muted/20 pb-4 pt-5">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                         <History className="h-4 w-4 text-primary" />
+                         Payment Ledger
+                      </CardTitle>
+                   </CardHeader>
+                   <CardContent className="p-0">
+                      <Table>
+                         <TableHeader>
+                            <TableRow className="hover:bg-transparent">
+                               <TableHead className="w-[120px]">Date</TableHead>
+                               <TableHead>Description</TableHead>
+                               <TableHead>Method</TableHead>
+                               <TableHead>Received By</TableHead>
+                               <TableHead className="text-right">Amount (৳)</TableHead>
+                            </TableRow>
+                         </TableHeader>
+                         <TableBody>
+                            {billing.payments?.length === 0 ? (
+                               <TableRow>
+                                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground italic">No payment records found.</TableCell>
+                               </TableRow>
+                            ) : (
+                               billing.payments?.map((payment: any) => {
+                                  const isPartial = payment.amount < billing.monthlyFee
+                                  return (
+                                     <TableRow key={payment.id}>
+                                        <TableCell className="font-medium whitespace-nowrap">
+                                           {format(new Date(payment.created_at), "dd MMM yyyy")}
+                                        </TableCell>
+                                        <TableCell>
+                                           <div className="flex items-center gap-2">
+                                              <span>{payment.remarks || "Monthly Internet Fee Payment"}</span>
+                                              {isPartial && payment.amount > 0 && (
+                                                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-600 bg-amber-500/10 hover:bg-amber-500/10 border-dashed">Partial</Badge>
+                                              )}
+                                              {!isPartial && payment.amount > 0 && (
+                                                <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-600 bg-emerald-500/10 hover:bg-emerald-500/10 border-dashed">Full</Badge>
+                                              )}
+                                           </div>
+                                        </TableCell>
+                                        <TableCell className="capitalize text-muted-foreground">{payment.payment_method || "Cash"}</TableCell>
+                                        <TableCell className="text-muted-foreground">{payment.collected_by || "System"}</TableCell>
+                                        <TableCell className="text-right font-bold text-foreground">
+                                           ৳{payment.amount}
+                                        </TableCell>
+                                     </TableRow>
+                                  )
+                               })
+                            )}
+                         </TableBody>
+                      </Table>
+                   </CardContent>
+                </Card>
+             </div>
+          ) : (
+             <div className="text-center py-12 text-muted-foreground border rounded-lg mt-4 border-dashed">Failed to load billing history or no data available.</div>
+          )}
+        </TabsContent>
 
         {/* ── Overview Tab ── */}
         <TabsContent value="overview">
@@ -373,6 +527,20 @@ export default function UserProfilePage({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Hidden React-to-Print Component */}
+      <div className="hidden">
+        {customer && billing && (
+          <CustomerStatement
+            ref={printRef}
+            customer={customer}
+            payments={billing.payments || []}
+            dueBalance={billing.dueBalance}
+            monthlyFee={billing.monthlyFee}
+            lifetimeValue={billing.lifetimeValue}
+          />
+        )}
+      </div>
     </div>
   )
 }

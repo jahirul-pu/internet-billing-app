@@ -39,10 +39,25 @@ export async function POST(request: Request) {
       throw paymentError
     }
 
-    // 2. Update the customer's last_payment_date to today
+    // 2. Update the customer's last_payment_date and deduct the collection from due_balance
+    // First retrieve the current balance
+    const { data: custData, error: custReadError } = await supabaseAdmin
+      .from('customers')
+      .select('due_balance')
+      .eq('id', customer_id)
+      .single()
+
+    if (custReadError) throw custReadError
+
+    const currentBalance = Number(custData.due_balance || 0)
+    const newBalance = currentBalance - parseFloat(amount)
+
     const { error: customerError } = await supabaseAdmin
       .from('customers')
-      .update({ last_payment_date: new Date().toISOString() })
+      .update({ 
+        last_payment_date: new Date().toISOString(),
+        due_balance: newBalance
+      })
       .eq('id', customer_id)
 
     if (customerError) throw customerError

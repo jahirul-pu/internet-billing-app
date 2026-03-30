@@ -164,10 +164,18 @@ export async function POST(request: Request) {
       targetZoneId = defaultZone?.id
     }
 
-    // 5. Calculate billing_day from billing_start_date if not provided
+    // 5. Calculate billing_day and align billing_start_date if not provided
+    let finalBillingStartDate = billing_start_date
+    if (!finalBillingStartDate) {
+      // Auto-align to 1st of next month
+      const now = new Date()
+      const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 12, 0, 0)
+      finalBillingStartDate = nextMonth.toISOString().split('T')[0]
+    }
+
     let billingDay = providedBillingDay
-    if (!billingDay && billing_start_date) {
-      billingDay = new Date(billing_start_date).getDate()
+    if (!billingDay && finalBillingStartDate) {
+      billingDay = new Date(finalBillingStartDate).getDate()
     }
     if (!billingDay) billingDay = 1
 
@@ -188,7 +196,7 @@ export async function POST(request: Request) {
       monthly_bill: monthly_bill || pkg.price || 0,
       monthly_fee: effectiveMonthlyFee,
       discount: discount || 0,
-      billing_start_date: billing_start_date || null,
+      billing_start_date: finalBillingStartDate,
       billing_day: billingDay,
       grace_period_days: grace_period_days ?? 3,
       ip_address: body.ip_address || null,

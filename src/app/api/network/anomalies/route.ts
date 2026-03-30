@@ -53,15 +53,11 @@ export async function GET() {
       '=.proplist=name,caller-id,address,uptime'
     ])
 
-    // 3. Get all PPPoE interfaces and their traffic
-    const allInterfaces = await api.write('/interface/print', [
-      '=.proplist=name,rx-byte,tx-byte,type'
+    // 3. Get all PPPoE interfaces and their traffic directly
+    const pppoeInterfaces = await api.write('/interface/print', [
+      '=.proplist=name,rx-byte,tx-byte,type',
+      '?type=pppoe-in'
     ])
-
-    // Map PPPoE interface traffic
-    const pppoeInterfaces = allInterfaces.filter((i: any) =>
-      i.name?.startsWith('<pppoe-') || i.type === 'pppoe-in'
-    )
 
     // 4. Cross-reference with customer database
     const { data: customers } = await supabaseAdmin
@@ -91,16 +87,26 @@ export async function GET() {
       const totalBytes = rxBytes + txBytes
       const totalGB = totalBytes / (1024 ** 3)
 
+      const rxSpeed = Number(iface['rx-bits-per-second']) || 0
+      const txSpeed = Number(iface['tx-bits-per-second']) || 0
+      const totalSpeed = rxSpeed + txSpeed
+
       const customer = customerMap[username]
       const percentOfIIG = totalIIGBytes > 0 ? (totalBytes / totalIIGBytes) * 100 : 0
 
       const userData = {
         username,
+        ifaceName: iface.name,
         fullName: customer?.full_name || username,
         packageName: (customer?.packages as any)?.name || 'Unknown',
-        downloadGB: parseFloat((txBytes / (1024 ** 3)).toFixed(2)), // Router TX = User Download
-        uploadGB: parseFloat((rxBytes / (1024 ** 3)).toFixed(2)),   // Router RX = User Upload
+        downloadGB: parseFloat((txBytes / (1024 ** 3)).toFixed(2)),
+        uploadGB: parseFloat((rxBytes / (1024 ** 3)).toFixed(2)),
         totalGB: parseFloat(totalGB.toFixed(2)),
+        // Defaults
+        downloadMbps: 0,
+        uploadMbps: 0,
+        totalMbps: 0,
+        totalSpeed, // For initial sorting
         percentOfIIG: parseFloat(percentOfIIG.toFixed(2)),
         isAnomaly: totalBytes > threshold && threshold > 0,
       }
@@ -112,18 +118,59 @@ export async function GET() {
       }
     }
 
-    // Sort anomalies by total usage descending
-    anomalies.sort((a, b) => b.totalGB - a.totalGB)
+    // Sort to get top 10 candidates by data and by initial speed
+    const topByData = [...allUserTraffic].sort((a, b) => b.totalGB - a.totalGB).slice(0, 10)
+    const topBySpeed = [...allUserTraffic].sort((a, b) => b.totalSpeed - a.totalSpeed).slice(0, 10)
+
+    const uniqueCandidatesMap = new Map()
+    topByData.forEach(u => uniqueCandidatesMap.set(u.username, u))
+    topBySpeed.forEach(u => uniqueCandidatesMap.set(u.username, u))
+    const uniqueCandidates = Array.from(uniqueCandidatesMap.values())
+
+    // 6. Fetch real-time speed for candidates ONLY (optimization)
+    if (uniqueCandidates.length > 0) {
+      const topInterfaceNames = uniqueCandidates.map(u => u.ifaceName)
+      try {
+        const liveTraffic = await api.write('/interface/monitor-traffic', [
+          `=interface=${topInterfaceNames.join(',')}`,
+          '=once='
+        ])
+
+        // Map live traffic back to users
+        const liveMap: Record<string, { rxMbps: number; txMbps: number }> = {}
+        for (const t of liveTraffic) {
+          liveMap[t.name] = {
+            rxMbps: parseFloat(((Number(t['rx-bits-per-second']) || 0) / 1000000).toFixed(1)),
+            txMbps: parseFloat(((Number(t['tx-bits-per-second']) || 0) / 1000000).toFixed(1))
+          }
+        }
+
+        // Apply to uniqueCandidates
+        for (const u of uniqueCandidates) {
+          const live = liveMap[u.ifaceName]
+          if (live) {
+            u.downloadMbps = live.txMbps // Router TX = User Download
+            u.uploadMbps = live.rxMbps   // Router RX = User Upload
+            u.totalMbps = parseFloat((live.rxMbps + live.txMbps).toFixed(1))
+            u.totalSpeed = live.rxMbps + live.txMbps // Update totalSpeed for re-sorting
+          }
+        }
+      } catch (monitorErr) {
+        console.error('[Anomalies] Monitor-traffic fail:', monitorErr)
+      }
+    }
+
+    // Re-sort topBySpeed mathematically from accurately fetched speed
+    topBySpeed.sort((a, b) => b.totalMbps - a.totalMbps)
 
     return NextResponse.json({
       success: true,
       totalIIGTrafficGB: parseFloat((totalIIGBytes / (1024 ** 3)).toFixed(2)),
       thresholdGB: parseFloat((threshold / (1024 ** 3)).toFixed(2)),
       anomalyCount: anomalies.length,
-      anomalies,
-      topUsers: allUserTraffic
-        .sort((a, b) => b.totalGB - a.totalGB)
-        .slice(0, 10), // Top 10 consumers
+      anomalies: anomalies.sort((a, b) => b.totalGB - a.totalGB).slice(0, 10),
+      topUsersByData: topByData,
+      topUsersBySpeed: topBySpeed
     })
   } catch (error: any) {
     console.error('[Network Anomalies] Error:', error)

@@ -154,9 +154,11 @@ export default function UsersPage() {
 
   // Derived: filtered collectors based on selected area (from CRM staff data)
   const filteredCollectors = useMemo(() => {
-    if (!formData.area) return []
+    if (!formData.area) return crmStaff
     return crmStaff.filter(s => 
-      Array.isArray(s.assigned_areas) && s.assigned_areas.includes(formData.area)
+      (Array.isArray(s.assigned_areas) && s.assigned_areas.includes(formData.area)) || 
+      (s.zone === formData.area) ||
+      (s.roles && s.roles.includes('Manager')) // Just safely include anyone if they're managers too
     )
   }, [formData.area, crmStaff])
 

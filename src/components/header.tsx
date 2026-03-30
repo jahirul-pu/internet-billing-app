@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Menu, Plus, Bell, User as UserIcon, Settings, LogOut } from "lucide-react"
+import { Menu, Plus, Bell, User as UserIcon, Settings, LogOut, UserPlus, CreditCard, MessageSquareText, ContactRound, ScrollText, Banknote, Ticket } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { SidebarNav } from "./sidebar-nav"
@@ -47,17 +47,48 @@ export function Header() {
       <div className="flex items-center gap-2 sm:gap-4 pr-2">
         {/* Quick Actions */}
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="hidden sm:flex items-center gap-1.5 h-8 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400" />}>
+          <DropdownMenuTrigger render={<Button variant="outline" size="sm" className="hidden sm:flex items-center gap-1.5 h-8" />}>
               <Plus className="h-4 w-4" />
-              <span className="font-semibold text-xs tracking-tight uppercase">Quick Action</span>
+              <span>Quick Action</span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuGroup>
-              <DropdownMenuLabel>Create New</DropdownMenuLabel>
+              <DropdownMenuLabel>Management</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/users?action=new" />}>New Customer</DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/collections" />}>Log Payment</DropdownMenuItem>
-              <DropdownMenuItem render={<Link href="/" />}>Open Ticket</DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/users?action=new" />}>
+                <UserPlus />
+                New Customer
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/collections" />}>
+                <CreditCard />
+                Log Payment
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/staff" />}>
+                <ContactRound />
+                Add Staff
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Communications</DropdownMenuLabel>
+              <DropdownMenuItem render={<Link href="/communications" />}>
+                <MessageSquareText />
+                Broadcast SMS
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/support" />}>
+                <Ticket />
+                Open Ticket
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Operations</DropdownMenuLabel>
+              <DropdownMenuItem render={<Link href="/logs" />}>
+                <ScrollText />
+                System Logs
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/billing" />}>
+                <Banknote />
+                Billing Summary
+              </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
